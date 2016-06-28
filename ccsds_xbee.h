@@ -6,6 +6,7 @@
 
 // Initalization functions
 int InitXBee(uint16_t address,  uint16_t PanID, Stream &serial);
+int InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial, Stream &debug_serial);
 
 // sending functions
 int sendAtCommand(AtCommandRequest atRequest);
@@ -21,8 +22,7 @@ int readCmdMsg(uint8_t params[], uint8_t &fcncode);
 int readTlmMsg(uint8_t data[]);
 
 // utility functions
-
-void printPktInfo();
+void printPktInfo(CCSDS_PriHdr_t _PriHeader);
 
 template<typename T> uint8_t addIntToTlm(const T& val, uint8_t payload[], uint8_t start_pos) {
 	for(uint8_t i = 0; i < sizeof(T); i++) { // Loop through each byte
