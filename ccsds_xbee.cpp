@@ -13,7 +13,8 @@ modified.
 
 //////////////// initalize objects
 XBee xbee = XBee();
-Stream _debug_serial = NULL;
+bool _debug_serial = false;
+
 //////////////// initalize variables
 
 // max length of packet's payload (ie data)
@@ -27,14 +28,14 @@ uint32_t _RcvdCtr = 0;
 uint32_t _CmdRejCtr = 0;
 
 void printHex(int num, int precision) {
-	if(_debug_serial != NULL){
+	if(_debug_serial){
 		char tmp[16];
 		char format[20];
 
 		sprintf(format, "0x%%.%dX", precision);
 
 		sprintf(tmp, format, num);
-		_debug_serial.print(tmp);
+		Serial.print(tmp);
 	}
 }
 
@@ -54,15 +55,15 @@ http://examples.digi.com/wp-content/uploads/2012/07/XBee_ZB_ZigBee_AT_Commands.p
   // initalize status variable to failure (will be changed if it passes)
   uint8_t STATUS = 1;
   
-  if(_debug_serial != NULL){
-	_debug_serial.println(F("Sending cmd to XBee:"));
+  if(_debug_serial){
+	Serial.println(F("Sending cmd to XBee:"));
   }
   // send the command
   xbee.send(atRequest);
   
   // clear the line since sending the packet will print gibberish
-  if(_debug_serial != NULL){
-    _debug_serial.println();
+  if(_debug_serial){
+    Serial.println();
   }
   
   // wait up to 5 seconds for the status response
@@ -74,60 +75,60 @@ http://examples.digi.com/wp-content/uploads/2012/07/XBee_ZB_ZigBee_AT_Commands.p
       xbee.getResponse().getAtCommandResponse(atResponse);
 
       if (atResponse.isOk()) {
-		  if(_debug_serial != NULL){
-			_debug_serial.print("Cmd [");
-			_debug_serial.print(char(atResponse.getCommand()[0]));
-			_debug_serial.print(char(atResponse.getCommand()[1]));
-			_debug_serial.print("] sent");
+		  if(_debug_serial){
+			Serial.print("Cmd [");
+			Serial.print(char(atResponse.getCommand()[0]));
+			Serial.print(char(atResponse.getCommand()[1]));
+			Serial.print("] sent");
 		  }
         if (atResponse.getValueLength() > 0) {
-          if(_debug_serial != NULL){
-            _debug_serial.print("Command value length is ");
-            _debug_serial.println(atResponse.getValueLength(), DEC);
+          if(_debug_serial){
+            Serial.print("Command value length is ");
+            Serial.println(atResponse.getValueLength(), DEC);
           }
 
-		  if(_debug_serial != NULL){
-			  _debug_serial.print(" and returned: ");
+		  if(_debug_serial){
+			  Serial.print(" and returned: ");
 			  for (int i = 0; i < atResponse.getValueLength(); i++) {
           printHex(atResponse.getValue()[i], 2);
-          _debug_serial.print(" ");
+          Serial.print(" ");
 			  }
 		  }
 
         }
         
-        _debug_serial.println();
+        Serial.println();
         STATUS = 0;
       } 
       else {
-		  if(_debug_serial != NULL){
-			_debug_serial.print(F("Command return error code: "));
+		  if(_debug_serial){
+			Serial.print(F("Command return error code: "));
 			printHex(atResponse.getStatus(), 2);
-			_debug_serial.println();
+			Serial.println();
 		  }
         STATUS = 1;
       }
     } else {
-		if(_debug_serial != NULL){
-		  _debug_serial.print(F("Expected AT response but got "));
+		if(_debug_serial){
+		  Serial.print(F("Expected AT response but got "));
 		  printHex(xbee.getResponse().getApiId(), 2);
-		  _debug_serial.println();
+		  Serial.println();
 		}
       STATUS = 1;
     }   
   } else {
     // at command failed
     if (xbee.getResponse().isError()) {
-		if(_debug_serial != NULL){
-		  _debug_serial.print(F("Error reading packet.  Error code: "));  
+		if(_debug_serial){
+		  Serial.print(F("Error reading packet.  Error code: "));  
 		  printHex(xbee.getResponse().getErrorCode(),2);
-		  _debug_serial.println();
+		  Serial.println();
 		}
       STATUS = 1;
     } 
     else {
-		if(_debug_serial != NULL){
-			_debug_serial.println(F("No response from radio")); 
+		if(_debug_serial){
+			Serial.println(F("No response from radio")); 
 		}		
       STATUS = 1;
     }
@@ -135,7 +136,7 @@ http://examples.digi.com/wp-content/uploads/2012/07/XBee_ZB_ZigBee_AT_Commands.p
   return STATUS;
 }
 
-int InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial, Stream &debug_serial){
+int InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial, bool debug_serial){
 /*
 Initalizes the code with a debugging serial defined. Initalizing the xbee with this function
 will allow the library to print debugging info to the specified serial.
@@ -145,7 +146,7 @@ will allow the library to print debugging info to the specified serial.
 	_debug_serial = debug_serial;
 	
 	// call the normal init
-	return InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial);
+	return InitXBee( address, PanID, xbee_serial);
 	
 }
 
@@ -285,17 +286,17 @@ Will send the data and print the SendCtr and the data sent to the serial.
   _SendCtr++;
   
   // Display data debug for the user
-  if(_debug_serial != NULL){
+  if(_debug_serial){
     
-	  _debug_serial.println();
-	  _debug_serial.print(F("Sent pkt #"));
-	  _debug_serial.print(_SendCtr);
-	  _debug_serial.print(F(", data: "));
+	  Serial.println();
+	  Serial.print(F("Sent pkt #"));
+	  Serial.print(_SendCtr);
+	  Serial.print(F(", data: "));
     for(int i = 0; i < payload_size; i++){
       printHex(payload[i],2);
-      _debug_serial.print(", ");
+      Serial.print(", ");
     }
-    _debug_serial.println();
+    Serial.println();
     
   }
 }
@@ -304,8 +305,8 @@ int sendTlmMsg(uint16_t SendAddr, uint8_t payload[], int payload_size){
 
   // if the user attempts to send a packet that's too long, don't do it
   if(payload_size+12 > PKT_MAX_LEN){
-    if(_debug_serial != NULL){
-      _debug_serial.println("Packet too long... not sending");
+    if(_debug_serial){
+      Serial.println("Packet too long... not sending");
       
     }
     return -1;
@@ -356,8 +357,8 @@ int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], int payloa
 
   // if the user attempts to send a packet that's too long, don't do it
   if(payload_size +12 > PKT_MAX_LEN){
-    if(_debug_serial != NULL){
-      _debug_serial.println("Packet too long... not sending");
+    if(_debug_serial){
+      Serial.println("Packet too long... not sending");
     }
     return -1;
   }
@@ -421,9 +422,9 @@ int readMsg(uint16_t timeout){
   else{
     // if an error occured, print it
     if(_bytesread < -1){
-      if(_debug_serial != NULL){
-        _debug_serial.print("Error reading, code: ");
-        _debug_serial.print(_bytesread);
+      if(_debug_serial){
+        Serial.print("Error reading, code: ");
+        Serial.print(_bytesread);
       }
     }
     return -1;
@@ -495,45 +496,45 @@ int readTlmMsg(uint8_t data[]){
 }
 
 void printPktInfo(CCSDS_PriHdr_t _PriHeader){
-  if(_debug_serial != NULL){
+  if(_debug_serial){
     // print info about the packet
-    _debug_serial.print("APID: ");
-    _debug_serial.print(CCSDS_RD_APID(_PriHeader));
-    _debug_serial.print(", SecHdr: ");
-    _debug_serial.print(CCSDS_RD_SHDR(_PriHeader));
-    _debug_serial.print(", Type: ");
-    _debug_serial.print(CCSDS_RD_TYPE(_PriHeader));
-    _debug_serial.print(", Ver: ");
-    _debug_serial.print(CCSDS_RD_VERS(_PriHeader));
-    _debug_serial.print(", SeqCnt: ");
-    _debug_serial.print(CCSDS_RD_SEQ(_PriHeader));
-    _debug_serial.print(", SegFlag: ");
-    _debug_serial.print(CCSDS_RD_SEQFLG(_PriHeader));
-    _debug_serial.print(", Len: ");
-    _debug_serial.println(CCSDS_RD_LEN(_PriHeader));
+    Serial.print("APID: ");
+    Serial.print(CCSDS_RD_APID(_PriHeader));
+    Serial.print(", SecHdr: ");
+    Serial.print(CCSDS_RD_SHDR(_PriHeader));
+    Serial.print(", Type: ");
+    Serial.print(CCSDS_RD_TYPE(_PriHeader));
+    Serial.print(", Ver: ");
+    Serial.print(CCSDS_RD_VERS(_PriHeader));
+    Serial.print(", SeqCnt: ");
+    Serial.print(CCSDS_RD_SEQ(_PriHeader));
+    Serial.print(", SegFlag: ");
+    Serial.print(CCSDS_RD_SEQFLG(_PriHeader));
+    Serial.print(", Len: ");
+    Serial.println(CCSDS_RD_LEN(_PriHeader));
 
     // process command and telemetry secondary headers
     if(CCSDS_RD_TYPE(_PriHeader)){
 
       // copy the data to it
-      CCSDS_CmdSecHdr_t _CmdSecHeader = *(CCSDS_CmdSecHdr_t*) (_PriHeader+sizeof(_PriHeader));
+      CCSDS_CmdSecHdr_t _CmdSecHeader = *(CCSDS_CmdSecHdr_t*) (&_PriHeader+sizeof(CCSDS_PriHdr_t));
 
       // print the command-specific data
-      _debug_serial.print("FcnCode: ");
-      _debug_serial.print(CCSDS_RD_FC(_CmdSecHeader));
-      _debug_serial.print(", CkSum: ");
-      _debug_serial.println(CCSDS_RD_CHECKSUM(_CmdSecHeader));
+      Serial.print("FcnCode: ");
+      Serial.print(CCSDS_RD_FC(_CmdSecHeader));
+      Serial.print(", CkSum: ");
+      Serial.println(CCSDS_RD_CHECKSUM(_CmdSecHeader));
     }
     else{
 
       // copy the data to it
-      CCSDS_TlmSecHdr_t _TlmSecHeader = *(CCSDS_TlmSecHdr_t*) (_PriHeader+sizeof(_PriHeader));
+      CCSDS_TlmSecHdr_t _TlmSecHeader = *(CCSDS_TlmSecHdr_t*) (&_PriHeader+sizeof(CCSDS_PriHdr_t));
 
       // print the telemetry-specific data
-      _debug_serial.print("Sec: ");
-      _debug_serial.print(CCSDS_RD_SEC_HDR_SEC(_TlmSecHeader));
-      _debug_serial.print("Subsec: ");
-      _debug_serial.println(CCSDS_RD_SEC_HDR_SUBSEC(_TlmSecHeader));
+      Serial.print("Sec: ");
+      Serial.print(CCSDS_RD_SEC_HDR_SEC(_TlmSecHeader));
+      Serial.print("Subsec: ");
+      Serial.println(CCSDS_RD_SEC_HDR_SUBSEC(_TlmSecHeader));
     }   
   }
 }
@@ -566,13 +567,13 @@ its effect on the rest of the program.
   // NOTE: THIS IS BLOCKING
   if (xbee.readPacket(timeout)){
     
-    if(_debug_serial != NULL){
-      _debug_serial.println("Read pkt ");
+    if(_debug_serial){
+      Serial.println("Read pkt ");
     }
       // if its a znet tx status            	
   	if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) {
-          if(_debug_serial != NULL){
-            _debug_serial.print(F("Received response..."));
+          if(_debug_serial){
+            Serial.print(F("Received response..."));
           }
                 
       // create response object for the message we're sending
@@ -583,14 +584,14 @@ its effect on the rest of the program.
   	   // get the delivery status, the fifth byte
          if (txStatus.getStatus() == SUCCESS) {
           	// success.  time to celebrate
-              if(_debug_serial != NULL){
-                _debug_serial.print(F("ACK!"));
+              if(_debug_serial){
+                Serial.print(F("ACK!"));
               }
               return 0;
          } else {
           	// the remote XBee did not receive our packet. sadface.
-              if(_debug_serial != NULL){
-                _debug_serial.print(F("Not ACK"));
+              if(_debug_serial){
+                Serial.print(F("Not ACK"));
               }
                 return 0;
          }
@@ -600,8 +601,8 @@ its effect on the rest of the program.
       // record the new packet
       _RcvdCtr++;
       
-      if(_debug_serial != NULL){
-        _debug_serial.print(F("Received Message..."));
+      if(_debug_serial){
+        Serial.print(F("Received Message..."));
       }
       
       // object for holding packets received over xbee
@@ -617,21 +618,21 @@ its effect on the rest of the program.
 
      }
      else{
-       if(_debug_serial != NULL){
-        _debug_serial.print(F("Received something else"));
+       if(_debug_serial){
+        Serial.print(F("Received something else"));
        }
        return 0;
      }   
      
-     if(_debug_serial != NULL){
-      _debug_serial.println();
+     if(_debug_serial){
+      Serial.println();
      }
   } else if (xbee.getResponse().isError()) {
     
     // tell the user that there was an error
-    if(_debug_serial != NULL){
-      _debug_serial.print(F("Read Error, Error Code:"));
-      _debug_serial.println(xbee.getResponse().getErrorCode());
+    if(_debug_serial){
+      Serial.print(F("Read Error, Error Code:"));
+      Serial.println(xbee.getResponse().getErrorCode());
     }
     
     // return the error code
@@ -643,8 +644,8 @@ its effect on the rest of the program.
     that the xbee is hooked up correctly (though that should've been detected
     in the initalization
     */
-    if(_debug_serial != NULL){
-      _debug_serial.println("No packet available");   
+    if(_debug_serial){
+      Serial.println("No packet available");   
     }    
     return -1;
   } 
