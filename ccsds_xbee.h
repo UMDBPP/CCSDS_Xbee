@@ -1,16 +1,17 @@
 #ifndef _ccsds_xbee_
 #define _ccsds_xbee_
 
-//#include <Serial.h>
 #include <XBee.h>
+#include "CCSDS.h"
 
 // Initalization functions
 int InitXBee(uint16_t address,  uint16_t PanID, Stream &serial);
+int InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial, bool debug_serial);
 
 // sending functions
 int sendAtCommand(AtCommandRequest atRequest);
 
-int _sendData(uint16_t SendAddr, uint8_t payload[], int payload_size);
+void _sendData(uint16_t SendAddr, uint8_t payload[], int payload_size);
 int sendTlmMsg(uint16_t SendAddr, uint8_t payload[], int payload_size);
 int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], int payload_size);
 
@@ -21,8 +22,7 @@ int readCmdMsg(uint8_t params[], uint8_t &fcncode);
 int readTlmMsg(uint8_t data[]);
 
 // utility functions
-
-void printPktInfo();
+void printPktInfo(CCSDS_PriHdr_t &_PriHeader);
 
 template<typename T> uint8_t addIntToTlm(const T& val, uint8_t payload[], uint8_t start_pos) {
 	for(uint8_t i = 0; i < sizeof(T); i++) { // Loop through each byte
