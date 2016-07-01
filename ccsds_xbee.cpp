@@ -519,7 +519,7 @@ example:
 	CCSDS_TlmSecHdr_t _TlmSecHeader = *(CCSDS_TlmSecHdr_t*) (_packet_data+sizeof(CCSDS_PriHdr_t));
 
 	// fill primary header fields
-	CCSDS_WR_APID(_PriHeader,SendAddr);
+	CCSDS_WR_APID(_PriHeader,_SendAddr);
 	CCSDS_WR_SHDR(_PriHeader,1);
 	CCSDS_WR_TYPE(_PriHeader,0);
 	CCSDS_WR_VERS(_PriHeader,0);
@@ -527,20 +527,20 @@ example:
 	// FIXME: Make sure that 3 indicates a full packet
 	// FIXME: Add multipacket support
 	CCSDS_WR_SEQFLG(_PriHeader,0x03);
-	CCSDS_WR_LEN(_PriHeader,payload_size+sizeof(CCSDS_TlmPkt_t));
+	CCSDS_WR_LEN(_PriHeader,_payload_size+sizeof(CCSDS_TlmPkt_t));
 
 	// fill secondary header fields
 	CCSDS_WR_SEC_HDR_SEC(_TlmSecHeader,millis()/1000L);
 	CCSDS_WR_SEC_HDR_SUBSEC(_TlmSecHeader,millis() % 1000L);
 
 	// copy the packet data
-	memcpy(_packet_data+sizeof(CCSDS_TlmPkt_t), payload, _payload_size);
+	memcpy(_packet_data+sizeof(CCSDS_TlmPkt_t), _payload, _payload_size);
 
 	// update the payload_size to include the headers
 	_payload_size += sizeof(CCSDS_TlmPkt_t);
 	
 	// send the message
-	_sendData(SendAddr, _packet_data, _payload_size);
+	_sendData(_SendAddr, _packet_data, _payload_size);
 
 	// return successful execution
 	return 1;
@@ -574,7 +574,7 @@ example:
 */	
 
 	// if the user attempts to send a packet that's too long, return failure
-	if(payload_size + sizeof(CCSDS_CmdPkt_t) > PKT_MAX_LEN){
+	if(_payload_size + sizeof(CCSDS_CmdPkt_t) > PKT_MAX_LEN){
 		if(_debug_serial){
 		  Serial.println("Packet too long... not sending");
 		}
@@ -584,7 +584,7 @@ example:
 	}
 
 	// allocate the buffer to compile the packet in
-	uint8_t _packet_data[payload_size + sizeof(CCSDS_CmdPkt_t)];
+	uint8_t _packet_data[_payload_size + sizeof(CCSDS_CmdPkt_t)];
 
 	// cast the buffer into the header structures so that the fields can be filled
 	CCSDS_PriHdr_t _PriHeader = *(CCSDS_PriHdr_t*) _packet_data;
@@ -599,7 +599,7 @@ example:
 	// FIXME: make sure this indicates full packet
 	// FIXME: Add multipacket support
 	CCSDS_WR_SEQFLG(_PriHeader,0x03); 
-	CCSDS_WR_LEN(_PriHeader,payload_size+sizeof(CCSDS_CmdPkt_t));
+	CCSDS_WR_LEN(_PriHeader,_payload_size+sizeof(CCSDS_CmdPkt_t));
 
 	// fill secondary header fields
 	CCSDS_WR_CHECKSUM(_CmdSecHeader, 0x0);
@@ -609,13 +609,13 @@ example:
 	CCSDS_WR_CHECKSUM((*(CCSDS_CmdPkt_t*) _packet_data).SecHdr, CCSDS_ComputeCheckSum((CCSDS_CmdPkt_t*) _packet_data));
 
 	// copy the packet data
-	memcpy(packet_data+sizeof(CCSDS_CmdPkt_t), payload, _payload_size);
+	memcpy(_packet_data+sizeof(CCSDS_CmdPkt_t), payload, _payload_size);
 
 	// update the payload_size to include the headers
 	_payload_size += sizeof(CCSDS_CmdPkt_t);
   
 	// send the message
-	_sendData(SendAddr, packet_data, _payload_size);
+	_sendData(SendAddr, _packet_data, _payload_size);
 
 	// return successful execution
 	return 1;
@@ -778,7 +778,7 @@ example:
 	}
 }
 
-void printPktInfo(CCSDS_PriHdr_t _PriHeader){
+void printPktInfo(CCSDS_PriHdr_t &_PriHeader){
 /*
 
 Prints debug info about a CCSDS packet. This function does nothing if _debug_serial is false.
