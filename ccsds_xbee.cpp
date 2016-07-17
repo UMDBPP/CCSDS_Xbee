@@ -71,12 +71,16 @@ printHex(10, 2) would print '0x0A' to Serial0
 printHex(1, 4) would print '0x0001' to Serial0
 
 */	
+	if(precision>16){
+	precision=15;
+	}
 	
 	// if user has not suppressed serial output
 	if(_debug_serial){
-		
+	
+
 		// initalize a buffer to hold the output string
-		// FIXME: initalize to length appropriate for prevision argument
+		// FIXME: initalize to length appropriate for precision argument
 		char tmp[16];
 		
 		// initalize a buffer to hold the format spec
