@@ -72,7 +72,7 @@ printHex(10, 2) would print '0x0A' to Serial0
 printHex(1, 4) would print '0x0001' to Serial0
 
 */	
-  i
+ 
 	unsigned char tmp_precision,format_precision;
 	
 
