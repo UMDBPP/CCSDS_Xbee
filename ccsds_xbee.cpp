@@ -58,7 +58,8 @@ int num - The value to be printed
 int precision - The number of digits to print
 
 Outputs:
-None
+I:W
+INone
 
 Return:
 void
@@ -71,21 +72,29 @@ printHex(10, 2) would print '0x0A' to Serial0
 printHex(1, 4) would print '0x0001' to Serial0
 
 */	
-	if(precision>16){
-	precision=15;
-	}
-	
+	//Increasing buffer precision for output string and format spec
+	tmp_precision=precision+2;	
+
+	//Checking for number of digits in precision
+	int len=1;
+	while(precision>=10){
+		precision=precision/10;
+		len++;
+		}
+	//Precision for format buffer based on
+	format_precision=len+6;
+
+
 	// if user has not suppressed serial output
 	if(_debug_serial){
-	
+					
 
 		// initalize a buffer to hold the output string
-		// FIXME: initalize to length appropriate for precision argument
-		char tmp[16];
+		char tmp[tmp_precision];
 		
 		// initalize a buffer to hold the format spec
-		// FIXME: initalize to length appropriate for precision argument
-		char format[20];
+		//
+		char format[buffer_precision];
 
 		// form the format spec to print a hexidecimal value with a specified number
 		// of total digits
