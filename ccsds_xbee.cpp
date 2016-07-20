@@ -72,19 +72,21 @@ printHex(10, 2) would print '0x0A' to Serial0
 printHex(1, 4) would print '0x0001' to Serial0
 
 */	
-	unsigned int tmp_precision,format_precision;
-	//Increasing buffer precision for output string in order to account for the length of the precision. +2 for the purpose of not running into any kind of error
-	tmp_precision=precision+2;
+  i
+	unsigned char tmp_precision,format_precision;
+	
 
 	//Checking for number of digits in precision
-	int len=1;
+	char len=1;
 	while(precision>=10){
 		precision=precision/10;
 		len++;
 		}
+
+	//Increasing buffer precision for output string in order to account for the length of the precision. +2 for the purpose of not running into any kind of error
 	//Precision for format buffer based on the number of digits in precision + the default characters in the format spec which is 5. Used +6 in order to run into any kind of error.
 	format_precision=len+6; 
-
+	tmp_precision=len+2;
 
 	// if user has not suppressed serial output
 	if(_debug_serial){
