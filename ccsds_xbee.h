@@ -53,6 +53,5 @@ template<typename T> uint8_t extractFromTlm(T& extractedVal, uint8_t data[], uin
   return start_pos + sizeof(T);
 }
 
-
 #endif  /* _ccsds_ */
 

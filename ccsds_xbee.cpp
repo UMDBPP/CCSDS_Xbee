@@ -1,5 +1,3 @@
-//just trying to see how git works.:w
-
 /*
 This file contains code written to simplify the user interactions with 
 the xbee and formating/recieving CCSDS packets.
@@ -26,11 +24,11 @@ SPL 	2016-06-28 	Added better commenting
 // initalize an Xbee object from the adafruit xbee library
 XBee xbee = XBee();
 
+//////////////// initalize variables
+
 // flag controlling if debugging statements are printed to Serial0
 // set to false by default, set by user by calling 4 argument InitXbee
 bool _debug_serial = false;
-
-//////////////// initalize variables
 
 // define the maximum expected length of packet's payload (ie data) to initalize buffer 
 // FIXME: cite a source on the origin of this number. look in xbee documentation
@@ -47,19 +45,17 @@ uint32_t _SendCtr = 0;
 uint32_t _RcvdCtr = 0;
 uint32_t _CmdRejCtr = 0;
 
-
-void printHex(int num, int precision) {
+void printHex(int num, uint8_t precision) {
 /*
 prints the value with the specified number of digits in hex. will not
 do anything if _debug_serial (global variable) is set to false
 
 Inputs: 
 int num - The value to be printed
-int precision - The number of digits to print
+uint8_t precision - The number of digits to print
 
 Outputs:
-I:W
-INone
+None
 
 Return:
 void
@@ -71,45 +67,36 @@ example:
 printHex(10, 2) would print '0x0A' to Serial0
 printHex(1, 4) would print '0x0001' to Serial0
 
-*/	
+*/  
  
-			
-	// if user has not suppressed serial output
-	if(_debug_serial){
-		unsigned char tmp_precision,format_precision;
+  // if user has not suppressed serial output
+  if(_debug_serial){
+    
+    //Count the number of digits in precision so that the format specifier can be compiled
+    uint8_t precision_len = 0;
+    while(precision != 0){
+      precision /= 10;
+      precision_len++;
+    } 
 
-		//Checking for number of digits in precision
-		char len=1;
-		while(precision>=10){
-			precision=precision/10;
-			len++;
-			}	
-		// Increasing buffer precision for output string in order to account for the length of the precision. +2 for the purpose of not running into any kind of error
-		// Precision for format buffer based on the number of digits in precision + the default characters in the format spec which is 5. Used +6 in order to run into any kind of error.
-	
-		format_precision=len+6; 
-		tmp_precision=precision+2;
+    // initalize a buffer to hold the format spec
+    // this buffer must be large enough to hold the format specifier for the sprint. In this case it need to hold '0x%.' + precision_len + 'X'
+    char format[precision_len+5];
 
-
-		// initalize a buffer to hold the output string
-		char tmp[tmp_precision];
-		
-		// initalize a buffer to hold the format spec
-		//
-		char format[buffer_precision];
-
-		// form the format spec to print a hexidecimal value with a specified number
-		// of total digits
-		sprintf(format, "0x%%.%dX", precision);
-
-		// form the string to print
-		sprintf(tmp, format, num);
-		
-		// write to Serial0
-		Serial.print(tmp);
-	}
+    // form the format spec to print a hexidecimal value with a specified number of digits
+    sprintf(format, "0x%%.%dX", precision);
+    
+    // initalize a buffer to hold the output string
+    // this buffer must be large enough to hold the requested number of digits of precision + 2 (because it prefixed with '0x')
+    char out_str[precision+2];
+    
+    // form the output string to print
+    sprintf(out_str, format, num);
+    
+    // write to Serial0
+    Serial.print(out_str);
+  }
 }
-
 
 int sendAtCommand(AtCommandRequest atRequest) {
 /*
