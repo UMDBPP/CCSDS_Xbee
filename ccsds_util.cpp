@@ -7,9 +7,9 @@ uint16_t getAPID(uint8_t _packet[]) {
 }
 
 void setAPID(uint8_t _packet[], uint16_t APID) {
-	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
-	CCSDS_WR_APID(header,APID);
+	CCSDS_WR_APID((*header),APID);
 }
 
 uint8_t getSecHdrFlg(uint8_t _packet[]) {
@@ -19,9 +19,9 @@ uint8_t getSecHdrFlg(uint8_t _packet[]) {
 }
 
 void setSecHdrFlg(uint8_t _packet[], uint8_t SHDR) {
-	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
-	CCSDS_WR_SHDR(header,SHDR);
+	CCSDS_WR_SHDR((*header),SHDR);
 }
 
 uint8_t getVer(uint8_t _packet[]) {
@@ -31,9 +31,9 @@ uint8_t getVer(uint8_t _packet[]) {
 }
 
 void setVer(uint8_t _packet[], uint8_t ver) {
-	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
-	CCSDS_WR_VERS(header,ver);
+	CCSDS_WR_VERS((*header),ver);
 }
 
 uint16_t getSeqCtr(uint8_t _packet[]) {
@@ -43,9 +43,9 @@ uint16_t getSeqCtr(uint8_t _packet[]) {
 }
 
 void setSeqCtr(uint8_t _packet[], uint16_t seqctr) {
-	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
-	CCSDS_WR_SEQ(header,seqctr);
+	CCSDS_WR_SEQ((*header),seqctr);
 }
 
 uint8_t getSeqFlg(uint8_t _packet[]) {
@@ -55,9 +55,9 @@ uint8_t getSeqFlg(uint8_t _packet[]) {
 }
 
 void setSeqFlg(uint8_t _packet[], uint8_t seqflg) {
-	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
-	CCSDS_WR_SEQFLG(header,seqflg);
+	CCSDS_WR_SEQFLG((*header),seqflg);
 }
 
 // 0 for TLM packet, 1 for CMD packet
@@ -68,9 +68,9 @@ uint8_t getPacketType(uint8_t _packet[]) {
 }
 
 void setPacketType(uint8_t _packet[], uint8_t Type) {
-	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
-	CCSDS_WR_TYPE(header,Type);
+	CCSDS_WR_TYPE((*header),Type);
 }
 
 uint16_t getPacketLength(uint8_t _packet[]) {
@@ -80,9 +80,9 @@ uint16_t getPacketLength(uint8_t _packet[]) {
 }
 
 void setPacketLength(uint8_t _packet[], uint16_t Len) {
-	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
-	CCSDS_WR_LEN(header, Len);
+	CCSDS_WR_LEN((*header), Len);
 }
 
 
@@ -93,9 +93,9 @@ uint32_t getTlmTimeSec(uint8_t _packet[]) {
 }
 
 void setTlmTimeSec(uint8_t _packet[], uint32_t sec) {
-	CCSDS_TlmSecHdr_t header = getTlmHeader(_packet);
+	CCSDS_TlmSecHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
-	CCSDS_WR_SEC_HDR_SEC(header, sec);
+	CCSDS_WR_SEC_HDR_SEC((*header), sec);
 }
 
 uint16_t getTlmTimeSubSec(uint8_t _packet[]) {
@@ -105,7 +105,7 @@ uint16_t getTlmTimeSubSec(uint8_t _packet[]) {
 }
 
 void setTlmTimeSubSec(uint8_t _packet[], uint16_t subsec) {
-	CCSDS_TlmSecHdr_t header = getTlmHeader(_packet);
+	CCSDS_TlmSecHdr_t *header = (CCSDS_PriHdr_t*)_packet;
 
 	CCSDS_WR_SEC_HDR_SUBSEC(header, subsec);
 }
