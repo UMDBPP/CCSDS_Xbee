@@ -37,6 +37,12 @@ void setTlmTimeSec(uint8_t _packet[], uint32_t sec);
 uint16_t getTlmTimeSubSec(uint8_t _packet[]);
 void setTlmTimeSubSec(uint8_t _packet[], uint16_t subsec);
 
+uint8_t getCmdFunctionCode(uint8_t _packet[]);
+void setCmdFunctionCode(uint8_t _packet[], uint8_t fcncode);
+
+uint8_t getCmdChecksum(uint8_t _packet[]);
+void setCmdChecksum(uint8_t _packet[], uint8_t checksum);
+
 CCSDS_PriHdr_t getPrimaryHeader(uint8_t _packet[]);
 CCSDS_TlmSecHdr_t getTlmHeader(uint8_t _packet[]);
 CCSDS_CmdSecHdr_t getCmdHeader(uint8_t _packet[]);

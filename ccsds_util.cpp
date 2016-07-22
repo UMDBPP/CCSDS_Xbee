@@ -93,7 +93,7 @@ uint32_t getTlmTimeSec(uint8_t _packet[]) {
 }
 
 void setTlmTimeSec(uint8_t _packet[], uint32_t sec) {
-	CCSDS_TlmSecHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+	CCSDS_TlmSecHdr_t *header = (CCSDS_TlmSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
 
 	CCSDS_WR_SEC_HDR_SEC((*header), sec);
 }
@@ -105,9 +105,33 @@ uint16_t getTlmTimeSubSec(uint8_t _packet[]) {
 }
 
 void setTlmTimeSubSec(uint8_t _packet[], uint16_t subsec) {
-	CCSDS_TlmSecHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+	CCSDS_TlmSecHdr_t *header = (CCSDS_TlmSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
 
 	CCSDS_WR_SEC_HDR_SUBSEC(header, subsec);
+}
+
+uint8_t getCmdFunctionCode(uint8_t _packet[]) {
+	CCSDS_CmdSecHdr_t shdr = getCmdHeader(_packet);
+
+	return CCSDS_RD_FC(shdr);
+}
+
+void setCmdFunctionCode(uint8_t _packet[], uint8_t fcncode) {
+	CCSDS_CmdSecHdr_t *shdr = (CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
+
+	CCSDS_WR_FC((*shdr), fcncode);
+}
+
+uint8_t getCmdChecksum(uint8_t _packet[]) {
+	CCSDS_CmdSecHdr_t shdr = getCmdHeader(_packet);
+
+	return CCSDS_RD_CHECKSUM(shdr);
+}
+
+void setCmdChecksum(uint8_t _packet[], uint8_t checksum) {
+	CCSDS_CmdSecHdr_t *shdr = (CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
+
+	CCSDS_WR_CHECKSUM((*shdr), checksum);
 }
 
 CCSDS_PriHdr_t getPrimaryHeader(uint8_t _packet[]) {
