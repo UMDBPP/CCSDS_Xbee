@@ -554,7 +554,7 @@ example:
 
 int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size){
   
-  sendCmdMsg(SendAddr, SendAddr, fcncode, payload[], _payload_size);
+  sendCmdMsg(SendAddr, SendAddr, fcncode, payload, _payload_size);
 }
   
   
