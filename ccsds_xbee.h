@@ -3,6 +3,7 @@
 
 #include <XBee.h>
 #include "CCSDS.h"
+#include "ccsds_util.h"
 
 // Initalization functions
 int InitXBee(uint16_t address,  uint16_t PanID, Stream &serial);

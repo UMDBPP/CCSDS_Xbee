@@ -522,23 +522,32 @@ example:
 	// FIXME: change to cast to CCSDS_TlmPkt_t for simplicity
 	//CCSDS_PriHdr_t _PriHeader = *(CCSDS_PriHdr_t*) _packet_data;
 	//CCSDS_TlmSecHdr_t _TlmSecHeader = *(CCSDS_TlmSecHdr_t*) (_packet_data+sizeof(CCSDS_PriHdr_t));
-	CCSDS_PriHdr_t* _PriHeader = (CCSDS_PriHdr_t*)_packet_data;
-	CCSDS_TlmSecHdr_t* _TlmSecHeader = (CCSDS_TlmSecHdr_t*)(_packet_data+sizeof(CCSDS_PriHdr_t));
+	//CCSDS_PriHdr_t* _PriHeader = (CCSDS_PriHdr_t*)_packet_data;
+	//CCSDS_TlmSecHdr_t* _TlmSecHeader = (CCSDS_TlmSecHdr_t*)(_packet_data+sizeof(CCSDS_PriHdr_t));
 
 	// fill primary header fields
-	CCSDS_WR_APID((*_PriHeader),_SendAddr);
-	CCSDS_WR_SHDR((*_PriHeader),1);
-	CCSDS_WR_TYPE((*_PriHeader),0);
-	CCSDS_WR_VERS((*_PriHeader),0);
-	CCSDS_WR_SEQ((*_PriHeader),_SendCtr);
+	setAPID(_packet_data, _SendAddr);
+	//CCSDS_WR_APID((*_PriHeader),_SendAddr);
+	setSecHdrFlg(_packet_data, 1);
+	//CCSDS_WR_SHDR((*_PriHeader),1);
+	setPacketType(_packet_data, 0);
+	//CCSDS_WR_TYPE((*_PriHeader),0);
+	setVer(_packet_data, 0);
+	//CCSDS_WR_VERS((*_PriHeader),0);
+	setSeqCtr(_packet_data, _SendCtr);
+	//CCSDS_WR_SEQ((*_PriHeader),_SendCtr);
 	// FIXME: Make sure that 3 indicates a full packet
 	// FIXME: Add multipacket support
-	CCSDS_WR_SEQFLG((*_PriHeader),0x03);
-	CCSDS_WR_LEN((*_PriHeader),_payload_size+sizeof(CCSDS_TlmPkt_t));
+	setSeqFlg(_packet_data, 0x03);
+	//CCSDS_WR_SEQFLG((*_PriHeader),0x03);
+	setPacketLength(_packet_data, _payload_size+sizeof(CCSDS_TlmPkt_t));
+	//CCSDS_WR_LEN((*_PriHeader),_payload_size+sizeof(CCSDS_TlmPkt_t));
 
 	// fill secondary header fields
-	CCSDS_WR_SEC_HDR_SEC((*_TlmSecHeader),millis()/1000L);
-	CCSDS_WR_SEC_HDR_SUBSEC((*_TlmSecHeader),millis() % 1000L);
+	setTlmTimeSec(_packet_data,millis()/1000L);
+	//CCSDS_WR_SEC_HDR_SEC((*_TlmSecHeader),millis()/1000L);
+	setTlmTimeSubSec(_packet_data,millis() % 1000L);
+	//CCSDS_WR_SEC_HDR_SUBSEC((*_TlmSecHeader),millis() % 1000L);
 
 	// copy the packet data
 	memcpy(_packet_data+sizeof(CCSDS_TlmPkt_t), _payload, _payload_size);
