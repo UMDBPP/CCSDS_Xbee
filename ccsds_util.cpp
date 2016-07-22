@@ -107,7 +107,7 @@ uint16_t getTlmTimeSubSec(uint8_t _packet[]) {
 void setTlmTimeSubSec(uint8_t _packet[], uint16_t subsec) {
 	CCSDS_TlmSecHdr_t *header = (CCSDS_TlmSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
 
-	CCSDS_WR_SEC_HDR_SUBSEC(header, subsec);
+	CCSDS_WR_SEC_HDR_SUBSEC((*header), subsec);
 }
 
 uint8_t getCmdFunctionCode(uint8_t _packet[]) {
