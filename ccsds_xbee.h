@@ -13,8 +13,10 @@ int InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial, bool debug_s
 int sendAtCommand(AtCommandRequest atRequest);
 
 void _sendData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size);
-int sendTlmMsg(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size);
+int sendTlmMsg(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size); // legacy
+int sendTlmMsg(uint16_t _SendAddr, uint16_t _APID, uint8_t _payload[], uint16_t _payload_size);
 int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], uint16_t payload_size);
+int sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size); // legacy
 
 // reading functions
 int _readXbeeMsg(uint8_t data[], uint16_t timeout);

@@ -479,6 +479,12 @@ example:
 }
 
 int sendTlmMsg(uint16_t _SendAddr, uint8_t _payload[], uint16_t _payload_size){
+  
+  sendTlmMsg(_SendAddr, _SendAddr, _payload, _payload_size);
+  
+}
+
+int sendTlmMsg(uint16_t _SendAddr, uint16_t _APID, uint8_t _payload[], uint16_t _payload_size){
 /*
 
 Formats a CCSDS telemetry header and send the data to the indicated address.
@@ -519,7 +525,7 @@ example:
 	memset(_packet_data, 0x00, _payload_size+sizeof(CCSDS_TlmPkt_t));
 
 	// fill primary header fields
-	setAPID(_packet_data, _SendAddr);
+	setAPID(_packet_data, _APID);
 	setSecHdrFlg(_packet_data, 1);
 	setPacketType(_packet_data, 0);
 	setVer(_packet_data, 0);
@@ -546,8 +552,13 @@ example:
 	return 1;
 }
 
-
 int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size){
+  
+  sendCmdMsg(SendAddr, SendAddr, fcncode, payload[], _payload_size);
+}
+  
+  
+int sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size){
 /*
 
 Formats a CCSDS command header and send the data to the indicated address.
@@ -587,7 +598,7 @@ example:
 	uint8_t _packet_data[_payload_size + sizeof(CCSDS_CmdPkt_t)];
 
 	// fill primary header fields
-	setAPID(_packet_data, SendAddr);
+	setAPID(_packet_data, APID);
 	setSecHdrFlg(_packet_data, 1);
 	setPacketType(_packet_data, 1);
 	setVer(_packet_data, 0);
