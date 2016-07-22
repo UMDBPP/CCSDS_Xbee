@@ -422,7 +422,7 @@ example:
 	return STATUS;
 }
 
-void _sendData(uint16_t SendAddr, uint8_t payload[], int payload_size){
+void _sendData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size){
 /*
 
 INTENDED FOR INTERNAL USE ONLY
@@ -478,7 +478,7 @@ example:
 	}
 }
 
-int sendTlmMsg(uint16_t _SendAddr, uint8_t _payload[], int _payload_size){
+int sendTlmMsg(uint16_t _SendAddr, uint8_t _payload[], uint16_t _payload_size){
 /*
 
 Formats a CCSDS telemetry header and send the data to the indicated address.
@@ -563,7 +563,7 @@ example:
 }
 
 
-int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], int _payload_size){
+int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size){
 /*
 
 Formats a CCSDS command header and send the data to the indicated address.

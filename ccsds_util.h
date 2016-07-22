@@ -26,7 +26,7 @@ uint8_t getSeqFlg(uint8_t _packet[]);
 void setSeqFlg(uint8_t _packet[], uint8_t seqflg);
 
 uint8_t getPacketType(uint8_t _packet[]);
-void setPacketType(uint8_t _packet[], uint16_t Type);
+void setPacketType(uint8_t _packet[], uint8_t Type);
 
 uint16_t getPacketLength(uint8_t _packet[]);
 void setPacketLength(uint8_t _packet[], uint16_t Len);
