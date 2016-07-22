@@ -518,36 +518,20 @@ example:
 	uint8_t _packet_data[_payload_size+sizeof(CCSDS_TlmPkt_t)];
 	memset(_packet_data, 0x00, _payload_size+sizeof(CCSDS_TlmPkt_t));
 
-	// declare the header structures
-	// FIXME: change to cast to CCSDS_TlmPkt_t for simplicity
-	//CCSDS_PriHdr_t _PriHeader = *(CCSDS_PriHdr_t*) _packet_data;
-	//CCSDS_TlmSecHdr_t _TlmSecHeader = *(CCSDS_TlmSecHdr_t*) (_packet_data+sizeof(CCSDS_PriHdr_t));
-	//CCSDS_PriHdr_t* _PriHeader = (CCSDS_PriHdr_t*)_packet_data;
-	//CCSDS_TlmSecHdr_t* _TlmSecHeader = (CCSDS_TlmSecHdr_t*)(_packet_data+sizeof(CCSDS_PriHdr_t));
-
 	// fill primary header fields
 	setAPID(_packet_data, _SendAddr);
-	//CCSDS_WR_APID((*_PriHeader),_SendAddr);
 	setSecHdrFlg(_packet_data, 1);
-	//CCSDS_WR_SHDR((*_PriHeader),1);
 	setPacketType(_packet_data, 0);
-	//CCSDS_WR_TYPE((*_PriHeader),0);
 	setVer(_packet_data, 0);
-	//CCSDS_WR_VERS((*_PriHeader),0);
 	setSeqCtr(_packet_data, _SendCtr);
-	//CCSDS_WR_SEQ((*_PriHeader),_SendCtr);
 	// FIXME: Make sure that 3 indicates a full packet
 	// FIXME: Add multipacket support
 	setSeqFlg(_packet_data, 0x03);
-	//CCSDS_WR_SEQFLG((*_PriHeader),0x03);
 	setPacketLength(_packet_data, _payload_size+sizeof(CCSDS_TlmPkt_t));
-	//CCSDS_WR_LEN((*_PriHeader),_payload_size+sizeof(CCSDS_TlmPkt_t));
 
 	// fill secondary header fields
 	setTlmTimeSec(_packet_data,millis()/1000L);
-	//CCSDS_WR_SEC_HDR_SEC((*_TlmSecHeader),millis()/1000L);
 	setTlmTimeSubSec(_packet_data,millis() % 1000L);
-	//CCSDS_WR_SEC_HDR_SUBSEC((*_TlmSecHeader),millis() % 1000L);
 
 	// copy the packet data
 	memcpy(_packet_data+sizeof(CCSDS_TlmPkt_t), _payload, _payload_size);
@@ -602,27 +586,27 @@ example:
 	// allocate the buffer to compile the packet in
 	uint8_t _packet_data[_payload_size + sizeof(CCSDS_CmdPkt_t)];
 
-	// cast the buffer into the header structures so that the fields can be filled
-	CCSDS_PriHdr_t* _PriHeader = (CCSDS_PriHdr_t*) _packet_data;
-	CCSDS_CmdSecHdr_t* _CmdSecHeader = (CCSDS_CmdSecHdr_t*) (_packet_data+sizeof(CCSDS_PriHdr_t));
-
 	// fill primary header fields
-	CCSDS_WR_APID((*_PriHeader),SendAddr);
-	CCSDS_WR_SHDR((*_PriHeader),1);
-	CCSDS_WR_TYPE((*_PriHeader),1);
-	CCSDS_WR_VERS((*_PriHeader),0);
-	CCSDS_WR_SEQ((*_PriHeader),_SendCtr);
-	// FIXME: make sure this indicates full packet
+	setAPID(_packet_data, SendAddr);
+	setSecHdrFlg(_packet_data, 1);
+	setPacketType(_packet_data, 1);
+	setVer(_packet_data, 0);
+	setSeqCtr(_packet_data, _SendCtr);
+	// FIXME: Make sure that 3 indicates a full packet
 	// FIXME: Add multipacket support
-	CCSDS_WR_SEQFLG((*_PriHeader),0x03); 
-	CCSDS_WR_LEN((*_PriHeader),_payload_size+sizeof(CCSDS_CmdPkt_t));
+	setSeqFlg(_packet_data, 0x03);
+	setPacketLength(_packet_data, _payload_size+sizeof(CCSDS_CmdPkt_t));
 
 	// fill secondary header fields
-	CCSDS_WR_CHECKSUM((*_CmdSecHeader), 0x0);
-	CCSDS_WR_FC((*_CmdSecHeader), fcncode);
+	setTlmTimeSec(_packet_data,millis()/1000L);
+	setTlmTimeSubSec(_packet_data,millis() % 1000L);
+	
+	// fill secondary header fields
+	setCmdChecksum(_packet_data, 0x0);
+	setCmdFunctionCode(_packet_data, fcncode);
 
 	// write the checksum after the header's been added
-	CCSDS_WR_CHECKSUM((*(CCSDS_CmdPkt_t*) _packet_data).SecHdr, CCSDS_ComputeCheckSum((CCSDS_CmdPkt_t*) _packet_data));
+	setCmdChecksum(_packet_data, CCSDS_ComputeCheckSum((CCSDS_CmdPkt_t*) _packet_data));
 
 	// copy the packet data
 	memcpy(_packet_data+sizeof(CCSDS_CmdPkt_t), payload, _payload_size);
@@ -664,14 +648,8 @@ example:
         
   if(_bytesread > 0){
     
-    // declare the header structures
-    CCSDS_PriHdr_t _PriHeader;
-    
-    // cast the primary header into the header structure
-     _PriHeader = *(CCSDS_PriHdr_t*) (_packet_data);
-
     // return the packet type
-    return CCSDS_RD_TYPE(_PriHeader);
+    return (int)getPacketType(_packet_data);
   }
   else{
     // if an error occured, print it
@@ -709,41 +687,39 @@ example:
 	}
 
 */
-
-	// FIXME: Add checksum checking and handling mismatched checksum
-	/*
-	if(CCSDS_ValidCheckSum ((CCSDS_CmdPkt_t*) (_packet_data))){
-	Serial.println("Invalid");
-	_CmdRejCtr++;
-	return -1;
-	}
-	*/
-
-	// declare the header structures
-	CCSDS_PriHdr_t _PriHeader;
-
-	// copy the primary header into a structure
-	//memcpy(&_PriHeader, _packet_data, sizeof(_PriHeader));
-	_PriHeader = *(CCSDS_PriHdr_t*) (_packet_data);
-
-	if(CCSDS_RD_SHDR(_PriHeader)){
-
-		// declare the header structures
-		CCSDS_CmdSecHdr_t _CmdSecHeader;
-
-		// copy the secondary header into a structure
-		//memcpy(&_CmdSecHeader, _packet_data+sizeof(_PriHeader), sizeof(_CmdSecHeader));
-		_CmdSecHeader = *(CCSDS_CmdSecHdr_t*) (_packet_data+sizeof(_PriHeader));
-
-		// copy the parameters into the user's pointer
-		memcpy(params, _packet_data+sizeof(CCSDS_CmdPkt_t), _bytesread-sizeof(CCSDS_CmdPkt_t));
-
-		fcncode = CCSDS_RD_FC(_CmdSecHeader);
-
-		// return param length
-		return CCSDS_RD_LEN(_PriHeader)-sizeof(CCSDS_CmdPkt_t);
 		
+	// FIXME: handle case where it doesn't exist
+	// FIXME: do we still want to return the data to the user if the header is missing?
+	// FIXME: do we still want to return the data to the user if the checksum doesn't validate?
+		
+	// if the secondary header exists, extract the info from it
+	if(getSecHdrFlg(_packet_data)){
+		
+		fcncode = getCmdFunctionCode(_packet_data);
+	
+		// FIXME: Add checksum checking and handling mismatched checksum
+		/*
+		if(CCSDS_ValidCheckSum ((CCSDS_CmdPkt_t*) (_packet_data))){
+		Serial.println("Invalid");
+		_CmdRejCtr++;
+		return -1;
+		}
+		*/
+	
 	}
+	else{
+		
+		// FIXME: indicate an error somehow
+		fcncode = 0;
+
+	}
+	
+	// copy the parameters into the user's pointer
+	memcpy(params, _packet_data+sizeof(CCSDS_CmdPkt_t), _bytesread-sizeof(CCSDS_CmdPkt_t));
+
+	// return param length
+	return getPacketLength(_packet_data)-sizeof(CCSDS_CmdPkt_t);
+	
 }
 
 int readTlmMsg(uint8_t data[]){
@@ -770,28 +746,18 @@ example:
 
 */
 
-	// declare the header structures
-	CCSDS_PriHdr_t _PriHeader;
-
-	// copy the primary header into a structure
-	_PriHeader = *(CCSDS_PriHdr_t*) (_packet_data);
-
-	if(!CCSDS_RD_SHDR(_PriHeader)){
-
-		// declare the header structures
-		CCSDS_TlmSecHdr_t _TlmSecHeader;
-
-		// copy the secondary header into a structure
-		//memcpy(&_TlmSecHeader, _packet_data+sizeof(_PriHeader), sizeof(_TlmSecHeader));
-		_TlmSecHeader = *(CCSDS_TlmSecHdr_t*) (_packet_data+sizeof(_PriHeader));
-
-		// copy the parameters into the user's pointer
-		memcpy(data, _packet_data+sizeof(CCSDS_TlmPkt_t), _bytesread-sizeof(CCSDS_TlmPkt_t));
-
-		// return param length
-		return CCSDS_RD_LEN(_PriHeader)-sizeof(CCSDS_TlmPkt_t);
-
+	// FIXME: should return time to user if they want it
+	if(getSecHdrFlg(_packet_data)){
+		//uint32_t time_sec = getTlmTimeSec(_packet_data);
+		//uint16_t time_subsec = getTlmTimeSubSec(_packet_data);
 	}
+
+	// copy the parameters into the user's pointer
+	memcpy(data, _packet_data+sizeof(CCSDS_TlmPkt_t), _bytesread-sizeof(CCSDS_TlmPkt_t));
+
+	// return param length
+	return getPacketLength(_packet_data)-sizeof(CCSDS_TlmPkt_t);
+	
 }
 
 void printPktInfo(CCSDS_PriHdr_t &_PriHeader){
