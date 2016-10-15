@@ -68,27 +68,23 @@ printHex(10, 2) would print '0x0A' to Serial0
 printHex(1, 4) would print '0x0001' to Serial0
 
 */  
- 
+
   // if user has not suppressed serial output
   if(_debug_serial){
     
-    //Count the number of digits in precision so that the format specifier can be compiled
-    uint8_t precision_len = 0;
-    while(precision != 0){
-      precision /= 10;
-      precision_len++;
-    } 
-
+    if(precision > 8){
+      precision = 8;
+    }
     // initalize a buffer to hold the format spec
     // this buffer must be large enough to hold the format specifier for the sprint. In this case it need to hold '0x%.' + precision_len + 'X'
-    char format[precision_len+5];
+    char format[7];
 
     // form the format spec to print a hexidecimal value with a specified number of digits
     sprintf(format, "0x%%.%dX", precision);
     
     // initalize a buffer to hold the output string
     // this buffer must be large enough to hold the requested number of digits of precision + 2 (because it prefixed with '0x')
-    char out_str[precision+2];
+    char out_str[10];
     
     // form the output string to print
     sprintf(out_str, format, num);
