@@ -351,7 +351,7 @@ example:
 
 	// initalize a AP command which sets the Xbee to API mode
 	uint8_t APCmd[] = {'A','P'};
-	uint8_t APSetVal[] = {0x01};
+	uint8_t APSetVal[] = {0x02};
 
 	// initalize a CE command which sets the Xbee to end node
 	uint8_t CECmd[] = {'C','E'};
