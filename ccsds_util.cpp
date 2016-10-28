@@ -134,6 +134,12 @@ void setCmdChecksum(uint8_t _packet[], uint8_t checksum) {
 	CCSDS_WR_CHECKSUM((*shdr), checksum);
 }
 
+uint8_t validateChecksum(uint8_t _packet[]) {
+	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+
+	return CCSDS_ValidCheckSum(header);
+}
+
 CCSDS_PriHdr_t getPrimaryHeader(uint8_t _packet[]) {
 	return *(CCSDS_PriHdr_t*)(_packet);
 }
