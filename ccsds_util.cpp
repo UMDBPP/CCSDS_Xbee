@@ -135,7 +135,7 @@ void setCmdChecksum(uint8_t _packet[], uint8_t checksum) {
 }
 
 uint8_t validateChecksum(uint8_t _packet[]) {
-	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+	CCSDS_CmdPkt_t *header = (CCSDS_CmdPkt_t*) _packet;
 
 	return CCSDS_ValidCheckSum(header);
 }
