@@ -142,7 +142,7 @@ example:
 	// wait up to 2 seconds for the response from the xbee
 	// xbee.readpacket() returns true is a packet was read, false if it 
 	//	timed out or there was an error reading from the xbee
-	if (xbee.readPacket(2000)) {
+	if (xbee.readPacket(1000)) {
 	
 		// if the response recieved is not an AT Command Response packet,
 		//		tell the user and return a problem
@@ -352,6 +352,10 @@ example:
 	// initalize a AP command which sets the Xbee to API mode
 	uint8_t APCmd[] = {'A','P'};
 	uint8_t APSetVal[] = {0x02};
+	// Note: this should be 2 soas to put the xbee in API mode w/PPP. This mode will automatically
+	// add escape characters to the message where necessary to make sure the data reaches the other
+	// xbee. Mode 1 requires that the user sanitize their message to ensure that none of the xbee
+	// control sequences are included in the data to be sent.
 
 	// initalize a CE command which sets the Xbee to end node
 	uint8_t CECmd[] = {'C','E'};
