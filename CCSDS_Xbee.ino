@@ -6,10 +6,12 @@
 void setup() {
   
   // send a message
+  uint16_t pkt_pos = 0;
   uint8_t tlm_data;
-  addIntToTlm<uint8_t>((uint16_t)0xAA, &tlm_data, (uint16_t)0);
-  sendTlmMsg((uint16_t)0x01, &tlm_data, (uint16_t)1);
-  sendTlmMsg((uint16_t)0x01, (uint16_t)0x02, &tlm_data, (uint16_t)1);
+  pkt_pos = addIntToTlm<uint8_t>((uint16_t)0xAA, &tlm_data, pkt_pos);
+  pkt_pos = addStrToTlm("This is a test", &tlm_data, pkt_pos);
+  sendTlmMsg((uint16_t)0x01, &tlm_data, pkt_pos);
+  sendTlmMsg((uint16_t)0x01, (uint16_t)0x02, &tlm_data, pkt_pos);
 }
 
 void loop() {
