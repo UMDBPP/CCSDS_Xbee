@@ -953,8 +953,17 @@ its effect on the rest of the program.
 }
 
 uint8_t addStrToTlm(const char *s, uint8_t payload[], uint8_t start_pos){
+ // WARNING: Untested
 
 	memcpy(&payload,s,strlen(s));
   return start_pos + strlen(s);
   
 }
+
+uint8_t addStrToTlm(const String &s, uint8_t payload[], uint8_t start_pos){
+ // WARNING: Untested
+	
+  return addStrToTlm(s.c_str(), payload, start_pos);
+  
+}
+ 
