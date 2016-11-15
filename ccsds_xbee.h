@@ -26,7 +26,7 @@ int readTlmMsg(uint8_t data[]);
 
 // utility functions
 void printPktInfo(CCSDS_PriHdr_t &_PriHeader);
-uint8_t addStrToTlm(const char *s, uint8_t payload[], uint8_t start_pos);
+uint8_t addStrToTlm(char *s, uint8_t payload[], uint8_t start_pos);
 //uint8_t addStrToTlm(const String &s, uint8_t payload[], uint8_t start_pos);
 
 template<typename T> uint8_t addIntToTlm(const T& val, uint8_t payload[], uint8_t start_pos) {
