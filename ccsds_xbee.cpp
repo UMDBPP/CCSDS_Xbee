@@ -1,291 +1,72 @@
-/*
-This file contains code written to simplify the user interactions with 
-the xbee and formating/recieving CCSDS packets.
-
-Note: 
-Variables and functions whose name begins with '_' are intended for use 
-within this file only. Use in other code at your own risk.
-
-Changelog:
-SPL 	2016-06-28 	Added better commenting
-
-*/
-
-//////////////// include libraries
-#include <XBee.h>
-
-//////////////// include headers
-// header file for this code 
 #include "ccsds_xbee.h"
-// defines the CCSDS packet format
-#include "CCSDS.h"
 
-//////////////// initalize objects
-// initalize an Xbee object from the adafruit xbee library
-XBee xbee = XBee();
-
-//////////////// initalize variables
-
-// flag controlling if debugging statements are printed to Serial0
-// set to false by default, set by user by calling 4 argument InitXbee
-bool _debug_serial = false;
-
-// define the maximum expected length of packet's payload (ie data) to initalize buffer 
-// FIXME: cite a source on the origin of this number. look in xbee documentation
-#define PKT_MAX_LEN 100
-
-// initalize buffer to hold packets for processing before its passed to the user
-uint8_t _packet_data[PKT_MAX_LEN];
-
-// initalize counter to hold number of bytes read
-int _bytesread;
-
-// initalize counters to track packet I/O
-uint32_t _SendCtr = 0;
-uint32_t _RcvdCtr = 0;
-uint32_t _CmdRejCtr = 0;
-
-void printHex(int num, uint8_t precision) {
-/*
-prints the value with the specified number of digits in hex. will not
-do anything if _debug_serial (global variable) is set to false
-
-Inputs: 
-int num - The value to be printed
-uint8_t precision - The number of digits to print
-
-Outputs:
-None
-
-Return:
-void
-
-Globals:
-bool _debug_serial
-
-example:
-printHex(10, 2) would print '0x0A' to Serial0
-printHex(1, 4) would print '0x0001' to Serial0
-
-*/  
-
-  // if user has not suppressed serial output
-  if(_debug_serial){
-    
-    if(precision > 8){
-      precision = 8;
-    }
-    // initalize a buffer to hold the format spec
-    // this buffer must be large enough to hold the format specifier for the sprint. In this case it need to hold '0x%.' + precision_len + 'X'
-    char format[7];
-
-    // form the format spec to print a hexidecimal value with a specified number of digits
-    sprintf(format, "0x%%.%dX", precision);
-    
-    // initalize a buffer to hold the output string
-    // this buffer must be large enough to hold the requested number of digits of precision + 2 (because it prefixed with '0x')
-    char out_str[10];
-    
-    // form the output string to print
-    sprintf(out_str, format, num);
-    
-    // write to Serial0
-    Serial.print(out_str);
-  }
-}
-
-int sendAtCommand(AtCommandRequest atRequest) {
-/*
-Function to send an AT command to the xbee and check for 
-a response from the Xbee indicating command execution status.
-Used to send commands to the xbee to configure it. Will print
-debugging statements if _debug_serial is true.
-
-see reference for available AT commands:
-http://examples.digi.com/wp-content/uploads/2012/07/XBee_ZB_ZigBee_AT_Commands.pdf
-
-Inputs: 
-AtCommandRequest atRequest - ATCommandRequest containg the command to be sent
-
-Outputs:
-None
-
-Return:
-flag indicating if the command was sent and acknowledged
-
-Globals:
-bool _debug_serial
-
-example:
-  uint8_t PLCmd[] = {'P','L'};
-  uint8_t PLSetVal[] = {0x04};
-
-  STATUS |= sendAtCommand(AtCommandRequest(PLCmd, PLSetVal, sizeof(PLSetVal)));
-
-*/	
-
-	// initalize status variable to failure (will be changed if it passes)
-	uint8_t STATUS = 1;
-
-	if(_debug_serial){
-	// output a statement to indicate that a command is being sent
-	Serial.println(F("Sending cmd to XBee:"));
-	}
-  
-	// send the AT command which the user passed in
-	xbee.send(atRequest);
-
-	// once an AT command is sent we expect that the Xbee will send back 
-	// an AT Command Response packet indicating if it executed or rejected
-	// the command
-
-	// wait up to 2 seconds for the response from the xbee
-	// xbee.readpacket() returns true is a packet was read, false if it 
-	//	timed out or there was an error reading from the xbee
-	if (xbee.readPacket(1000)) {
-	
-		// if the response recieved is not an AT Command Response packet,
-		//		tell the user and return a problem
-		if (xbee.getResponse().getApiId() != AT_COMMAND_RESPONSE) {
-			
-			if(_debug_serial){
-			  Serial.print(F("Expected AT response but got "));
-			  printHex(xbee.getResponse().getApiId(), 2);
-			  Serial.println();
-			}
-			
-			// return 1 to indicate that the command failed
-			// FIXME: should we read again to see if the next packet is an AT response?
-			return 1;
-		  
-		}
-		// the response was an ATCommandResponse, process it
-		else{
-			// initalize a structure to hold the response from the xbee
-			AtCommandResponse atResponse = AtCommandResponse();
-		
-			// get the ATCommandResponse from the xbee for further processing
-			xbee.getResponse().getAtCommandResponse(atResponse);
-
-			// check if the ATCommandResponse indicates that there was an error
-			if (!atResponse.isOk()){
-				
-				if(_debug_serial){
-					// if there was an error, the Status contains the error code, print
-					// 	it for the user
-					Serial.print(F("Command return error code: "));
-					printHex(atResponse.getStatus(), 2);
-					Serial.println();
-				}
-				
-				// return 1 to indicate the command failed 
-				return 1;
-			}
-			// the command executed correctly
-			else{
-				
-				if(_debug_serial){
-					// print the command sent to the debug
-					Serial.print("Cmd [");
-					Serial.print(char(atResponse.getCommand()[0]));
-					Serial.print(char(atResponse.getCommand()[1]));
-					Serial.print("] sent");
-				
-					// if the ATCommandResponse contained data
-					if (atResponse.getValueLength() > 0) {
-						
-							// print the returned values
-							Serial.print("Command value length is ");
-							Serial.println(atResponse.getValueLength(), DEC);
-							Serial.print(" and returned: ");
-							for (int i = 0; i < atResponse.getValueLength(); i++) {
-								printHex(atResponse.getValue()[i], 2);
-								Serial.print(" ");
-							}
-							Serial.println();
-
-					}
-				}	
-				
-				// return 0 to indicate successful execution
-				return 0;
-			}
-			
-		}   
-	} 
-	// xbee.readpacket() returned a failure (could be either a timeout or error)
-	else {
-		
-		// isError will return true if an error occured
-		if (xbee.getResponse().isError()) {
-			
-			if(_debug_serial){
-				
-				// print the error code for the user
-				Serial.print(F("Error reading packet.  Error code: "));  
-				printHex(xbee.getResponse().getErrorCode(),2);
-				Serial.println();
-			}
-			
-			// return 1 to indicate failure
-			return 1;
-		} 
-		else {
-			if(_debug_serial){
-				
-				// tell the user that the call timed out
-				Serial.println(F("Timeout, no response from radio")); 
-			}		
-			
-			// return 1 to indicate failure
-			return 1;
-		}
-	}
-}
-
-int InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial, bool debug_serial){
-/*
-Initalizes the the xbee on xbee_serial and sets the following configuration parameters:
-    Sets MY (16bit address) to the value given of the first argument (must be unique for each xbee)
-    Sets ID (PAN ID) to to the value of the second argument (all Xbees much match)
-    Sets CH (Channel) to C, arbitrarily chosen (all Xbees must match)
-    Sets CE (Coordinator Enable), should be 0 for all xbees
-    Sets PL (Power level), should be set at max
-    Sets BD (Interface Data Rate) to 9600, must match arduino serial baud rate
-    Sets AP (API enable) to enabled
-	
-These settings will allow for for packetized communication. Initalizing the xbee with this 
-function will allow the user to specify if the library should print debug info to Serial0.
-
-Inputs: 
-uint16_t address - the 16bit address for the xbee (must be unqiue among xbees)
-uint16_t PanID - the 16bit PanID for the xbee (must match other xbees)
-Stream &xbee_serial - the serial port the xbee is attached to (Serial, Serial1, Serial2, Serial3)
-bool debug_serial - a flag indicating if the library should print debug info the Serial0
-
-Outputs:
-None
-
-Return:
-bitfield indicating the status of the xbee configuration commands
-
-Globals:
-bool _debug_serial
-
-example:
-  InitXBee(0x0002, 0x0B0B, Serial3, true)
-
-*/	
-
-	// assign the flag indicating if the debug serial is being used
-	_debug_serial = debug_serial;
-	
-	// call the normal init
-	return InitXBee( address, PanID, xbee_serial);
+CCSDS_Xbee::CCSDS_Xbee(){
 	
 }
 
-int InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial) {
+int CCSDS_Xbee::init(uint16_t address, uint16_t PanID, Stream &xbee_serial, Stream &debug_serial){
+  add_debug_serial(debug_serial);
+  return init(address, PanID, xbee_serial);
+}
+
+int CCSDS_Xbee::start_logging(File logfile){
+  this->_logfile = logfile;
+	this->_logfile_defined = true;
+  return 1;
+}
+
+int CCSDS_Xbee::end_logging(){
+	this->_logfile_defined = false;
+  return 1;
+}
+
+int CCSDS_Xbee::add_rtc(RTC_DS1307 rtc){
+  this->_rtc = rtc;
+	this->_rtc_defined = true;
+  return 1;
+}
+
+int CCSDS_Xbee::remove_rtc(){
+	this->_rtc_defined = false;
+  return 1;
+}
+
+int CCSDS_Xbee::add_debug_serial(Stream &debug_serial){
+ 	this->_debug_serial = &debug_serial;
+	this->_debug_serial_defined = true; 
+  return 1;
+}
+
+int CCSDS_Xbee::remove_debug_serial(){
+	this->_debug_serial_defined = false; 
+  return 1;
+}
+
+uint32_t CCSDS_Xbee::getSentByteCtr(){
+  return _SentByteCtr;
+}
+
+
+uint32_t CCSDS_Xbee::getRcvdByteCtr(){
+  return _RcvdByteCtr;
+}
+
+
+void CCSDS_Xbee::resetRcvdByteCtr(){
+  _RcvdByteCtr = 0;
+}
+
+void CCSDS_Xbee::resetSentByteCtr(){
+  _SentByteCtr = 0;
+}
+
+
+void CCSDS_Xbee::resetCounters(){
+  resetSentByteCtr();
+  resetSentByteCtr();
+}
+
+int CCSDS_Xbee::init(uint16_t address, uint16_t PanID, Stream &xbee_serial) {
 /*
 Initalizes the the xbee on xbee_serial and sets the following configuration parameters:
     Sets MY (16bit address) to the value given of the first argument (must be unique for each xbee)
@@ -422,7 +203,203 @@ example:
 	return STATUS;
 }
 
-void _sendData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size){
+void printHex(int num, uint8_t precision) {
+/*
+prints the value with the specified number of digits in hex. will not
+do anything if _debug_serial_defined (global variable) is set to false
+
+Inputs: 
+int num - The value to be printed
+uint8_t precision - The number of digits to print
+
+Outputs:
+None
+
+Return:
+void
+
+Globals:
+bool _debug_serial_defined
+
+example:
+printHex(10, 2) would print '0x0A' to Serial0
+printHex(1, 4) would print '0x0001' to Serial0
+
+*/  
+
+  if(precision > 8){
+    precision = 8;
+  }
+  // initalize a buffer to hold the format spec
+  // this buffer must be large enough to hold the format specifier for the sprint. In this case it need to hold '0x%.' + precision_len + 'X'
+  char format[7];
+
+  // form the format spec to print a hexidecimal value with a specified number of digits
+  sprintf(format, "0x%%.%dX", precision);
+    
+  // initalize a buffer to hold the output string
+  // this buffer must be large enough to hold the requested number of digits of precision + 2 (because it prefixed with '0x')
+  char out_str[10];
+    
+  // form the output string to print
+  sprintf(out_str, format, num);
+    
+  // write to Serial0
+  Serial.print(out_str);
+
+}
+
+int CCSDS_Xbee::sendAtCommand(AtCommandRequest atRequest) {
+/*
+Function to send an AT command to the xbee and check for 
+a response from the Xbee indicating command execution status.
+Used to send commands to the xbee to configure it. Will print
+debugging statements if _debug_serial_defined is true.
+
+see reference for available AT commands:
+http://examples.digi.com/wp-content/uploads/2012/07/XBee_ZB_ZigBee_AT_Commands.pdf
+
+Inputs: 
+AtCommandRequest atRequest - ATCommandRequest containg the command to be sent
+
+Outputs:
+None
+
+Return:
+flag indicating if the command was sent and acknowledged
+
+Globals:
+bool _debug_serial_defined
+
+example:
+  uint8_t PLCmd[] = {'P','L'};
+  uint8_t PLSetVal[] = {0x04};
+
+  STATUS |= sendAtCommand(AtCommandRequest(PLCmd, PLSetVal, sizeof(PLSetVal)));
+
+*/	
+
+	// initalize status variable to failure (will be changed if it passes)
+	uint8_t STATUS = 1;
+
+	if(_debug_serial_defined){
+	// output a statement to indicate that a command is being sent
+	Serial.println(F("Sending cmd to XBee:"));
+	}
+  
+	// send the AT command which the user passed in
+	xbee.send(atRequest);
+
+	// once an AT command is sent we expect that the Xbee will send back 
+	// an AT Command Response packet indicating if it executed or rejected
+	// the command
+
+	// wait up to 2 seconds for the response from the xbee
+	// xbee.readpacket() returns true is a packet was read, false if it 
+	//	timed out or there was an error reading from the xbee
+	if (xbee.readPacket(1000)) {
+	
+		// if the response recieved is not an AT Command Response packet,
+		//		tell the user and return a problem
+		if (xbee.getResponse().getApiId() != AT_COMMAND_RESPONSE) {
+			
+			if(_debug_serial_defined){
+			  Serial.print(F("Expected AT response but got "));
+			  printHex(xbee.getResponse().getApiId(), 2);
+			  Serial.println();
+			}
+			
+			// return 1 to indicate that the command failed
+			// FIXME: should we read again to see if the next packet is an AT response?
+			return 1;
+		  
+		}
+		// the response was an ATCommandResponse, process it
+		else{
+			// initalize a structure to hold the response from the xbee
+			AtCommandResponse atResponse = AtCommandResponse();
+		
+			// get the ATCommandResponse from the xbee for further processing
+			xbee.getResponse().getAtCommandResponse(atResponse);
+
+			// check if the ATCommandResponse indicates that there was an error
+			if (!atResponse.isOk()){
+				
+				if(_debug_serial_defined){
+					// if there was an error, the Status contains the error code, print
+					// 	it for the user
+					Serial.print(F("Command return error code: "));
+					printHex(atResponse.getStatus(), 2);
+					Serial.println();
+				}
+				
+				// return 1 to indicate the command failed 
+				return 1;
+			}
+			// the command executed correctly
+			else{
+				
+				if(_debug_serial_defined){
+					// print the command sent to the debug
+					Serial.print("Cmd [");
+					Serial.print(char(atResponse.getCommand()[0]));
+					Serial.print(char(atResponse.getCommand()[1]));
+					Serial.print("] sent");
+				
+					// if the ATCommandResponse contained data
+					if (atResponse.getValueLength() > 0) {
+						
+							// print the returned values
+							Serial.print("Command value length is ");
+							Serial.println(atResponse.getValueLength(), DEC);
+							Serial.print(" and returned: ");
+							for (int i = 0; i < atResponse.getValueLength(); i++) {
+								printHex(atResponse.getValue()[i], 2);
+								Serial.print(" ");
+							}
+							Serial.println();
+
+					}
+				}	
+				
+				// return 0 to indicate successful execution
+				return 0;
+			}
+			
+		}   
+	} 
+	// xbee.readpacket() returned a failure (could be either a timeout or error)
+	else {
+		
+		// isError will return true if an error occured
+		if (xbee.getResponse().isError()) {
+			
+			if(_debug_serial_defined){
+				
+				// print the error code for the user
+				Serial.print(F("Error reading packet.  Error code: "));  
+				printHex(xbee.getResponse().getErrorCode(),2);
+				Serial.println();
+			}
+			
+			// return 1 to indicate failure
+			return 1;
+		} 
+		else {
+			if(_debug_serial_defined){
+				
+				// tell the user that the call timed out
+				Serial.println(F("Timeout, no response from radio")); 
+			}		
+			
+			// return 1 to indicate failure
+			return 1;
+		}
+	}
+}
+
+
+void CCSDS_Xbee::sendRawData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size){
 /*
 
 INTENDED FOR INTERNAL USE ONLY
@@ -445,11 +422,11 @@ Return:
 None
 
 Globals:
-_debug_serial
+_debug_serial_defined
 _SendCtr
 
 example:
-  _sendData(0x0002, raw_data, 16);
+  sendRawData(0x0002, raw_data, 16);
 
 */	
   
@@ -462,29 +439,75 @@ example:
 	// does not receive and ACK.
 
 	// update the counter keeping track of how many packets we've sent
-	_SendCtr++;
+	_SentPktCtr++;
+  _SentByteCtr += payload_size;
+  
+  // log the packet
+  logPkt(payload, payload_size, 0);
 
-	if(_debug_serial){
+	if(_debug_serial_defined){
 		// Display data debug for the user
-		Serial.println();
-		Serial.print(F("Sent pkt #"));
-		Serial.print(_SendCtr);
-		Serial.print(F(", data: "));
+		_debug_serial->println();
+		_debug_serial->print(F("Sent pkt #"));
+		_debug_serial->print(_SentPktCtr);
+		_debug_serial->print(F(", data: "));
 		for(int i = 0; i < payload_size; i++){
 			printHex(payload[i],2);
-			Serial.print(", ");
+			_debug_serial->print(", ");
 		}
-		Serial.println();
+		_debug_serial->println();
 	}
 }
 
-int sendTlmMsg(uint16_t _SendAddr, uint8_t _payload[], uint16_t _payload_size){
+int CCSDS_Xbee::createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload[], uint16_t _payload_size){
+	// if the user attempts to send a packet that's too long, return failure
+	if(_payload_size + sizeof(CCSDS_TlmPkt_t) > PKT_MAX_LEN){
+		if(_debug_serial_defined){
+			Serial.println("Packet too long... not sending");
+		}
+		
+		// return a failure
+		return -1;
+	}
+
+  // clear the buffer
+	//memset(pkt_buf, 0x00, pkt_buf+sizeof(CCSDS_TlmPkt_t));
+
+	// fill primary header fields
+	setAPID(pkt_buf, _APID);
+	setSecHdrFlg(pkt_buf, 1);
+	setPacketType(pkt_buf, 0);
+	setVer(pkt_buf, 0);
+	setSeqCtr(pkt_buf, _SentPktCtr);
+	setSeqFlg(pkt_buf, 0x03);
+	setPacketLength(pkt_buf, _payload_size+sizeof(CCSDS_TlmPkt_t));
+
+	// fill secondary header fields
+	if(_rtc_defined){
+		// get the current time from the RTC
+    DateTime now = _rtc.now();
+		// fill the fields
+	  setTlmTimeSec(pkt_buf, now.unixtime());
+	  setTlmTimeSubSec(pkt_buf, 0);
+  }else{
+	  setTlmTimeSec(pkt_buf, millis()/1000);
+	  setTlmTimeSubSec(pkt_buf, millis()%1000);
+	}
   
-  sendTlmMsg(_SendAddr, _SendAddr, _payload, _payload_size);
-  
+	// copy the packet data
+	memcpy(pkt_buf+sizeof(CCSDS_TlmPkt_t), _payload, _payload_size);
+
+	// update the payload_size to include the headers
+	_payload_size += sizeof(CCSDS_TlmPkt_t);
+	
+	return _payload_size;
 }
 
-int sendTlmMsg(uint16_t _SendAddr, uint16_t _APID, uint8_t _payload[], uint16_t _payload_size){
+int CCSDS_Xbee::createTlmMsg(uint16_t _APID, uint8_t _payload[], uint16_t _payload_size){
+  return createTlmMsg(this->_packet_data,  _APID,  _payload,  _payload_size);
+}
+
+int CCSDS_Xbee::sendTlmMsg(uint16_t _SendAddr, uint16_t _APID, uint8_t _payload[], uint16_t _payload_size){
 /*
 
 Formats a CCSDS telemetry header and send the data to the indicated address.
@@ -501,7 +524,7 @@ Return:
 Positive int is successful, negative int if failed
 
 Globals:
-_debug_serial
+_debug_serial_defined
 _SendCtr
 
 example:
@@ -509,56 +532,21 @@ example:
 
 */	
 
-	// if the user attempts to send a packet that's too long, return failure
-	if(_payload_size + sizeof(CCSDS_TlmPkt_t) > PKT_MAX_LEN){
-		if(_debug_serial){
-		  Serial.println("Packet too long... not sending");
-		}
-		
-		// return a failure
+	if(createTlmMsg(_APID, _payload, _payload_size) > 0){
+	
+		// send the message
+		sendRawData(_SendAddr, _packet_data, _payload_size);
+
+		// return successful execution
+		return 1;
+	}
+	else{
 		return -1;
 	}
-
-	// allocate the buffer to compile the packet in
-	// buffer needs to be large enough to hold the user supplied data plus the headers
-	uint8_t _packet_data[_payload_size+sizeof(CCSDS_TlmPkt_t)];
-	memset(_packet_data, 0x00, _payload_size+sizeof(CCSDS_TlmPkt_t));
-
-	// fill primary header fields
-	setAPID(_packet_data, _APID);
-	setSecHdrFlg(_packet_data, 1);
-	setPacketType(_packet_data, 0);
-	setVer(_packet_data, 0);
-	setSeqCtr(_packet_data, _SendCtr);
-	// FIXME: Make sure that 3 indicates a full packet
-	// FIXME: Add multipacket support
-	setSeqFlg(_packet_data, 0x03);
-	setPacketLength(_packet_data, _payload_size+sizeof(CCSDS_TlmPkt_t));
-
-	// fill secondary header fields
-	setTlmTimeSec(_packet_data,millis()/1000L);
-	setTlmTimeSubSec(_packet_data,millis() % 1000L);
-
-	// copy the packet data
-	memcpy(_packet_data+sizeof(CCSDS_TlmPkt_t), _payload, _payload_size);
-
-	// update the payload_size to include the headers
-	_payload_size += sizeof(CCSDS_TlmPkt_t);
-	
-	// send the message
-	_sendData(_SendAddr, _packet_data, _payload_size);
-
-	// return successful execution
-	return 1;
 }
 
-int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size){
   
-  sendCmdMsg(SendAddr, SendAddr, fcncode, payload, _payload_size);
-}
-  
-  
-int sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size){
+int CCSDS_Xbee::sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size){
 /*
 
 Formats a CCSDS command header and send the data to the indicated address.
@@ -576,7 +564,7 @@ Return:
 Positive int is successful, negative int if failed
 
 Globals:
-_debug_serial
+_debug_serial_defined
 _SendCtr
 
 example:
@@ -586,7 +574,7 @@ example:
 
 	// if the user attempts to send a packet that's too long, return failure
 	if(_payload_size + sizeof(CCSDS_CmdPkt_t) > PKT_MAX_LEN){
-		if(_debug_serial){
+		if(_debug_serial_defined){
 		  Serial.println("Packet too long... not sending");
 		}
 
@@ -602,15 +590,23 @@ example:
 	setSecHdrFlg(_packet_data, 1);
 	setPacketType(_packet_data, 1);
 	setVer(_packet_data, 0);
-	setSeqCtr(_packet_data, _SendCtr);
+	setSeqCtr(_packet_data, _SentPktCtr);
 	// FIXME: Make sure that 3 indicates a full packet
 	// FIXME: Add multipacket support
 	setSeqFlg(_packet_data, 0x03);
 	setPacketLength(_packet_data, _payload_size+sizeof(CCSDS_CmdPkt_t));
 
 	// fill secondary header fields
-	setTlmTimeSec(_packet_data,millis()/1000L);
-	setTlmTimeSubSec(_packet_data,millis() % 1000L);
+	if(_rtc_defined){
+		// get the current time from the RTC
+    DateTime now = _rtc.now();
+		// fill the fields
+	  setTlmTimeSec(_packet_data, now.unixtime());
+	  setTlmTimeSubSec(_packet_data, 0);
+  }else{
+	  setTlmTimeSec(_packet_data, millis()/1000);
+	  setTlmTimeSubSec(_packet_data, millis()%1000);
+	}
 	
 	// fill secondary header fields
 	setCmdChecksum(_packet_data, 0x0);
@@ -626,13 +622,13 @@ example:
 	_payload_size += sizeof(CCSDS_CmdPkt_t);
   
 	// send the message
-	_sendData(SendAddr, _packet_data, _payload_size);
+	sendRawData(SendAddr, _packet_data, _payload_size);
 
 	// return successful execution
 	return 1;
 }
 
-int readMsg(uint16_t timeout){
+int CCSDS_Xbee::readMsg(uint16_t timeout){
 /*
 
 Extracts the payload and fcncode of a command message and returns it to the user. 
@@ -647,7 +643,7 @@ Return:
 Negative value if error occured, otherwise type (Cmd/Tlm) of packet received
 
 Globals:
-_debug_serial
+_debug_serial_defined
 
 example:
   uint16_t PktType = readMsg(1);
@@ -665,7 +661,7 @@ example:
   else{
     // if an error occured, print it
     if(_bytesread < -1){
-      if(_debug_serial){
+      if(_debug_serial_defined){
         Serial.print("Error reading, code: ");
         Serial.print(_bytesread);
       }
@@ -674,7 +670,7 @@ example:
   }
 }
 
-int readCmdMsg(uint8_t params[], uint8_t &fcncode){
+int CCSDS_Xbee::readCmdMsg(uint8_t params[], uint8_t &fcncode){
 /*
 
 Extracts the payload and fcncode of a command message and returns it to the user. 
@@ -733,7 +729,7 @@ example:
 	
 }
 
-int readTlmMsg(uint8_t data[]){
+int CCSDS_Xbee::readTlmMsg(uint8_t data[]){
 /*
 
 Extracts the payload of a telemetry message and returns it to the user. 
@@ -771,10 +767,10 @@ example:
 	
 }
 
-void printPktInfo(CCSDS_PriHdr_t &_PriHeader){
+void CCSDS_Xbee::printPktInfo(CCSDS_PriHdr_t &_PriHeader){
 /*
 
-Prints debug info about a CCSDS packet. This function does nothing if _debug_serial is false.
+Prints debug info about a CCSDS packet. This function does nothing if _debug_serial_defined is false.
 
 Inputs: 
 CCSDS_PriHdr_t _PriHeader - Primary header of a packet
@@ -786,14 +782,14 @@ Return:
 None
 
 Globals:
-_debug_serial
+_debug_serial_defined
 
 example:
   printPktInfo(PriHeader);
 
 */
 	
-	if(_debug_serial){
+	if(_debug_serial_defined){
 		
 		// print info from the primary header
 		Serial.print("APID: ");
@@ -837,7 +833,7 @@ example:
 	}
 }
 
-int _readXbeeMsg(uint8_t data[], uint16_t timeout){
+int CCSDS_Xbee::_readXbeeMsg(uint8_t data[], uint16_t timeout){
 /*
 
 INTENDED FOR INTERNAL USE ONLY
@@ -864,93 +860,321 @@ its effect on the rest of the program.
     timeout = 1;
   }
     
-  // wait for the message
-  // NOTE: THIS IS BLOCKING
-  if (xbee.readPacket(timeout)){
-    
-    if(_debug_serial){
-      Serial.println("Read pkt ");
-    }
-      // if its a znet tx status            	
-  	if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) {
-          if(_debug_serial){
-            Serial.print(F("Received response..."));
-          }
-                
-      // create response object for the message we're sending
-      TxStatusResponse txStatus = TxStatusResponse();
-
-  	   xbee.getResponse().getZBTxStatusResponse(txStatus);
-  		
-  	   // get the delivery status, the fifth byte
-         if (txStatus.getStatus() == SUCCESS) {
-          	// success.  time to celebrate
-              if(_debug_serial){
-                Serial.print(F("ACK!"));
-              }
-              return 0;
-         } else {
-          	// the remote XBee did not receive our packet. sadface.
-              if(_debug_serial){
-                Serial.print(F("Not ACK"));
-              }
-                return 0;
-         }
-      }
-     else if( xbee.getResponse().getApiId() == RX_16_RESPONSE) {
-       
-      // record the new packet
-      _RcvdCtr++;
-      
-      if(_debug_serial){
-        Serial.print(F("Received Message..."));
-      }
-      
-      // object for holding packets received over xbee
-      Rx16Response reponse16 = Rx16Response();
-      
-      // read the packet
-      xbee.getResponse().getRx16Response(reponse16);
-        
-      // copy data from packet into the data array starting at element 4
-      memcpy(data, reponse16.getData(), reponse16.getDataLength());
-      
-      return reponse16.getDataLength();
-
-     }
-     else{
-       if(_debug_serial){
-        Serial.print(F("Received something else"));
-       }
-       return 0;
-     }   
-     
-     if(_debug_serial){
-      Serial.println();
-     }
-  } else if (xbee.getResponse().isError()) {
-    
-    // tell the user that there was an error
-    if(_debug_serial){
-      Serial.print(F("Read Error, Error Code:"));
-      Serial.println(xbee.getResponse().getErrorCode());
-    }
-    
-    // return the error code
-    return -xbee.getResponse().getErrorCode();
-    
-  } else {
+  // check if we received a message
+  xbee.readPacket();
+  
+  // check if a message was available
+  if (xbee.getResponse().isAvailable()){
     /*
     This typically means there was no packet to read, thogh can also mean
     that the xbee is hooked up correctly (though that should've been detected
     in the initalization
     */
-    if(_debug_serial){
-      Serial.println("No packet available");   
+    if(_debug_serial_defined){
+      _debug_serial->println("No packet available");   
     }    
     return -1;
-  } 
+  }
+  
+  // check if we read an error
+  if (xbee.getResponse().isError()) {
+    
+    // tell the user that there was an error
+    if(_debug_serial){
+      _debug_serial->print(F("Read Error, Error Code:"));
+      _debug_serial->println(xbee.getResponse().getErrorCode());
+    }
+    
+    // return the error code
+    return -xbee.getResponse().getErrorCode();
+  }
+  
+  if(_debug_serial_defined){
+    _debug_serial->println("Read pkt");
+  }
+  
+  // if its a znet tx status            	
+  if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) {
+    if(_debug_serial_defined){
+      _debug_serial->print(F("Received response..."));
+    }
+              
+    // create response object for the message we're sending
+    TxStatusResponse txStatus = TxStatusResponse();
+
+    xbee.getResponse().getZBTxStatusResponse(txStatus);
+    
+    // get the delivery status, the fifth byte
+    if (txStatus.getStatus() == SUCCESS) {
+      // success.  time to celebrate
+      if(_debug_serial_defined){
+        _debug_serial->println(F("ACK!"));
+      }
+      return 0;
+    } 
+    else{
+     // the remote XBee did not receive our packet. sadface.
+      if(_debug_serial_defined){
+        _debug_serial->println(F("Not ACK"));
+      }
+      return 0;
+    }
+  }
+  else if( xbee.getResponse().getApiId() == RX_16_RESPONSE) {
+
+    if(_debug_serial_defined){
+      _debug_serial->println(F("Received Message..."));
+    }
+    
+    // object for holding packets received over xbee
+    Rx16Response reponse16 = Rx16Response();
+    
+    // read the packet
+    xbee.getResponse().getRx16Response(reponse16);
+      
+    // copy data from packet into the data array starting at element 4
+    memcpy(data, reponse16.getData(), reponse16.getDataLength());
+
+#ifndef _NO_SD_
+    if(_logfile_defined){
+      // log the data as received
+      logPkt(data, reponse16.getDataLength(), 1);
+    }
+#endif
+
+    // record the new packet
+    _RcvdPktCtr++;
+    _RcvdByteCtr += reponse16.getDataLength();
+    
+    return reponse16.getDataLength();
+
+  }
+  else{
+    if(_debug_serial_defined){
+      _debug_serial->println(F("Received something else"));
+    }
+    return 0;
+  }   
+    
 }
+
+void CCSDS_Xbee::logPkt(uint8_t data[], uint8_t len, uint8_t received_flg){
+/*  logPkt()
+ * 
+ *  Prints an entry in the given log file containing the given data. Will prepend an
+ *  'S' if the data was sent or an 'R' is the data was received based on the value
+ *  of the received_flg.
+ */
+
+  // if the file is open
+  if (_logfile) {
+
+    // prepend an indicator of if the data was received or sent
+    // R indicates this was received data
+    if(received_flg){
+      _logfile.print("R ");
+    }
+    else{
+      _logfile.print("S ");
+    }
+    
+    // print timestamp to file
+    print_time();
+    
+    char buf[50];
+
+    // print the data in hex
+    _logfile.print(": ");
+    for(int i = 0; i < len; i++){
+        sprintf(buf, "%02x, ", data[i]);
+        _logfile.print(buf);
+     }
+     _logfile.println();
+     
+     // ensure the data gets written to the file
+     _logfile.flush();
+   }
+}
+
+void CCSDS_Xbee::print_time(){
+/*  print_time()
+ * 
+ *  Prints the current time to the given log file
+ */
+
+#ifndef _NO_RTC_
+    if(_rtc_defined){
+      // get the current time from the RTC
+      //DateTime now = SoftRTC.now();
+      DateTime now = _rtc.now();
+      uint32_t nowMS = millis();
+  
+      // print a datestamp to the file
+      char buf[50];
+      //sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),(nowMS - start_millis)%1000);  // print milliseconds);
+      sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),millis()%1000);  // print milliseconds);
+      _logfile.print(buf);
+    }
+    else{
+#endif
+      _logfile.print(millis());
+#ifndef _NO_RTC_
+    }
+#endif
+}
+
+uint16_t getAPID(uint8_t _packet[]) {
+	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+
+	return CCSDS_RD_APID(header);
+}
+
+void setAPID(uint8_t _packet[], uint16_t APID) {
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+
+	CCSDS_WR_APID((*header),APID);
+}
+
+uint8_t getSecHdrFlg(uint8_t _packet[]) {
+	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+
+	return CCSDS_RD_SHDR(header);
+}
+
+void setSecHdrFlg(uint8_t _packet[], uint8_t SHDR) {
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+
+	CCSDS_WR_SHDR((*header),SHDR);
+}
+
+uint8_t getVer(uint8_t _packet[]) {
+	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+
+	return CCSDS_RD_VERS(header);
+}
+
+void setVer(uint8_t _packet[], uint8_t ver) {
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+
+	CCSDS_WR_VERS((*header),ver);
+}
+
+uint16_t getSeqCtr(uint8_t _packet[]) {
+	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+
+	return CCSDS_RD_SEQ(header);
+}
+
+void setSeqCtr(uint8_t _packet[], uint16_t seqctr) {
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+
+	CCSDS_WR_SEQ((*header),seqctr);
+}
+
+uint8_t getSeqFlg(uint8_t _packet[]) {
+	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+
+	return CCSDS_RD_SEQFLG(header);
+}
+
+void setSeqFlg(uint8_t _packet[], uint8_t seqflg) {
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+
+	CCSDS_WR_SEQFLG((*header),seqflg);
+}
+
+// 0 for TLM packet, 1 for CMD packet
+uint8_t getPacketType(uint8_t _packet[]) {
+	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+
+	return CCSDS_RD_TYPE(header);
+}
+
+void setPacketType(uint8_t _packet[], uint8_t Type) {
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+
+	CCSDS_WR_TYPE((*header),Type);
+}
+
+uint16_t getPacketLength(uint8_t _packet[]) {
+	CCSDS_PriHdr_t header = getPrimaryHeader(_packet);
+
+	return CCSDS_RD_LEN(header);
+}
+
+void setPacketLength(uint8_t _packet[], uint16_t Len) {
+	CCSDS_PriHdr_t *header = (CCSDS_PriHdr_t*)_packet;
+
+	CCSDS_WR_LEN((*header), Len);
+}
+
+
+uint32_t getTlmTimeSec(uint8_t _packet[]) {
+	CCSDS_TlmSecHdr_t header = getTlmHeader(_packet);
+
+	return CCSDS_RD_SEC_HDR_SEC(header);
+}
+
+void setTlmTimeSec(uint8_t _packet[], uint32_t sec) {
+	CCSDS_TlmSecHdr_t *header = (CCSDS_TlmSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
+
+	CCSDS_WR_SEC_HDR_SEC((*header), sec);
+}
+
+uint16_t getTlmTimeSubSec(uint8_t _packet[]) {
+	CCSDS_TlmSecHdr_t header = getTlmHeader(_packet);
+
+	return CCSDS_RD_SEC_HDR_SUBSEC(header);
+}
+
+void setTlmTimeSubSec(uint8_t _packet[], uint16_t subsec) {
+	CCSDS_TlmSecHdr_t *header = (CCSDS_TlmSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
+
+	CCSDS_WR_SEC_HDR_SUBSEC((*header), subsec);
+}
+
+uint8_t getCmdFunctionCode(uint8_t _packet[]) {
+	CCSDS_CmdSecHdr_t shdr = getCmdHeader(_packet);
+
+	return CCSDS_RD_FC(shdr);
+}
+
+void setCmdFunctionCode(uint8_t _packet[], uint8_t fcncode) {
+	CCSDS_CmdSecHdr_t *shdr = (CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
+
+	CCSDS_WR_FC((*shdr), fcncode);
+}
+
+uint8_t getCmdChecksum(uint8_t _packet[]) {
+	CCSDS_CmdSecHdr_t shdr = getCmdHeader(_packet);
+
+	return CCSDS_RD_CHECKSUM(shdr);
+}
+
+void setCmdChecksum(uint8_t _packet[], uint8_t checksum) {
+	CCSDS_CmdSecHdr_t *shdr = (CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
+
+	CCSDS_WR_CHECKSUM((*shdr), checksum);
+}
+
+uint8_t validateChecksum(uint8_t _packet[]) {
+	CCSDS_CmdPkt_t *header = (CCSDS_CmdPkt_t*) _packet;
+
+	return CCSDS_ValidCheckSum(header);
+}
+
+CCSDS_PriHdr_t getPrimaryHeader(uint8_t _packet[]) {
+	return *(CCSDS_PriHdr_t*)(_packet);
+}
+
+CCSDS_TlmSecHdr_t getTlmHeader(uint8_t _packet[]) {
+	return *(CCSDS_TlmSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t)-1);
+}
+
+CCSDS_CmdSecHdr_t getCmdHeader(uint8_t _packet[]) {
+	return *(CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t)-1);
+}
+
 
 uint8_t addStrToTlm(char *s, uint8_t payload[], uint8_t start_pos){
 
@@ -967,3 +1191,4 @@ uint8_t addStrToTlm(const String &s, uint8_t payload[], uint8_t start_pos){
   
 }
 */
+

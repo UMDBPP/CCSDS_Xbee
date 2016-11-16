@@ -3,31 +3,160 @@
 
 #include <XBee.h>
 #include "CCSDS.h"
-#include "ccsds_util.h"
 
-// Initalization functions
-int InitXBee(uint16_t address,  uint16_t PanID, Stream &serial);
-int InitXBee(uint16_t address, uint16_t PanID, Stream &xbee_serial, bool debug_serial);
+#ifndef _NO_RTC_
+#include "RTClib.h"  // RTC and SoftRTC
+#endif
 
-// sending functions
-int sendAtCommand(AtCommandRequest atRequest);
+#ifndef _NO_SD_
+#include <SD.h>
+#endif
 
-void _sendData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size);
-int sendTlmMsg(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size); // legacy
-int sendTlmMsg(uint16_t _SendAddr, uint16_t _APID, uint8_t _payload[], uint16_t _payload_size);
-int sendCmdMsg(uint16_t SendAddr, uint8_t fcncode, uint8_t payload[], uint16_t payload_size);
-int sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size); // legacy
+// define the maximum expected length of packet's payload (ie data) to initalize buffer 
+// FIXME: cite a source on the origin of this number. look in xbee documentation
+#define PKT_MAX_LEN 100
 
-// reading functions
-int _readXbeeMsg(uint8_t data[], uint16_t timeout);
-int readMsg(uint16_t timeout);
-int readCmdMsg(uint8_t params[], uint8_t &fcncode);
-int readTlmMsg(uint8_t data[]);
+class CCSDS_Xbee
+{
+  
+//////////////////////////////////////////////////////////////
+//                     Public Methods                       //
+//////////////////////////////////////////////////////////////
+  public:
+    CCSDS_Xbee();
+	
+    // Initalization functions
+	  int init(uint16_t address, uint16_t PanID, Stream &xbee_serial);
+	  int init(uint16_t address, uint16_t PanID, Stream &xbee_serial, Stream &debug_serial);
 
-// utility functions
-void printPktInfo(CCSDS_PriHdr_t &_PriHeader);
-uint8_t addStrToTlm(char *s, uint8_t payload[], uint8_t start_pos);
-//uint8_t addStrToTlm(const String &s, uint8_t payload[], uint8_t start_pos);
+#ifndef _NO_SD_
+    int start_logging(File logfile);
+    int end_logging();
+#endif
+#ifndef _NO_RTC_
+    int add_rtc(RTC_DS1307 rtc);
+    int remove_rtc();
+#endif
+    int add_debug_serial(Stream &debug_serial);
+    int remove_debug_serial();
+
+	  // sending functions
+	  int sendAtCommand(AtCommandRequest atRequest);
+	  int createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload[], uint16_t _payload_size);
+	  int createTlmMsg(uint16_t _APID, uint8_t _payload[], uint16_t _payload_size);
+	  int sendTlmMsg(uint16_t SendAddr, uint16_t APID, uint8_t payload[], uint16_t payload_size);
+	  int sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t payload_size);
+
+    // reading functions
+	  int readMsg(uint16_t timeout);
+	  int readCmdMsg(uint8_t params[], uint8_t &fcncode);
+	  int readTlmMsg(uint8_t data[]);
+
+	  // utility functions
+	  void printPktInfo(CCSDS_PriHdr_t &_PriHeader);
+	  uint32_t getSentByteCtr();
+    uint32_t getRcvdByteCtr();
+    void resetSentByteCtr();
+    void resetRcvdByteCtr();
+    void resetCounters();
+  
+	  // reading functions
+	  int _readXbeeMsg(uint8_t data[], uint16_t timeout);
+	  // sending functions
+	  void sendRawData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size);
+	
+//////////////////////////////////////////////////////////////
+//                     Private Methods                      //
+//////////////////////////////////////////////////////////////
+  private:
+    // initalize an Xbee object from the adafruit xbee library
+	  XBee xbee = XBee();
+	
+#ifndef _NO_RTC_
+    // RTC used for time tagging packets
+	  bool _rtc_defined = false;
+	  RTC_DS1307 _rtc;
+#endif
+
+	  // flag controlling if debugging statements are printed to Serial0
+	  // set to false by default, set by user by calling 4 argument InitXbee
+	  bool _debug_serial_defined = false;
+	  Stream* _debug_serial;
+
+#ifndef _NO_SD_
+    // Log file 
+    bool _logfile_defined = false;
+    File _logfile;
+#endif
+
+	  // initalize buffer to hold packets for processing before its passed to the user
+	  uint8_t _packet_data[PKT_MAX_LEN];
+
+	  // initalize counter to hold number of bytes read
+	  uint32_t _bytesread;
+	  uint32_t _bytessent;
+
+	  // initalize counters to track packet I/O
+	  uint32_t _SentPktCtr = 0;
+	  uint32_t _RcvdPktCtr = 0;
+    uint32_t _SentByteCtr = 0;
+    uint32_t _RcvdByteCtr = 0;
+    
+    void print_time();
+    void logPkt(uint8_t data[], uint8_t len, uint8_t received_flg);
+    
+};
+
+void printHex(int num, uint8_t precision);
+
+//////////////////////////////////////////////////////////////
+//                     Utility Functions                    //
+//////////////////////////////////////////////////////////////
+// utility functions for getting/setting fields of CCSDS packets
+uint16_t getAPID(uint8_t _packet[]);
+void setAPID(uint8_t _packet[], uint16_t APID);
+
+uint8_t getSecHdrFlg(uint8_t _packet[]);
+void setSecHdrFlg(uint8_t _packet[], uint8_t SHDR);
+
+uint8_t getVer(uint8_t _packet[]);
+void setVer(uint8_t _packet[], uint8_t ver);
+
+uint16_t getSeqCtr(uint8_t _packet[]);
+void setSeqCtr(uint8_t _packet[], uint16_t seqctr);
+
+uint8_t getSeqFlg(uint8_t _packet[]);
+void setSeqFlg(uint8_t _packet[], uint8_t seqflg);
+
+uint8_t getPacketType(uint8_t _packet[]);
+void setPacketType(uint8_t _packet[], uint8_t Type);
+
+uint16_t getPacketLength(uint8_t _packet[]);
+void setPacketLength(uint8_t _packet[], uint16_t Len);
+
+uint32_t getTlmTimeSec(uint8_t _packet[]);
+void setTlmTimeSec(uint8_t _packet[], uint32_t sec);
+
+uint16_t getTlmTimeSubSec(uint8_t _packet[]);
+void setTlmTimeSubSec(uint8_t _packet[], uint16_t subsec);
+
+uint8_t getCmdFunctionCode(uint8_t _packet[]);
+void setCmdFunctionCode(uint8_t _packet[], uint8_t fcncode);
+
+uint8_t getCmdChecksum(uint8_t _packet[]);
+void setCmdChecksum(uint8_t _packet[], uint8_t checksum);
+
+uint8_t validateChecksum(uint8_t _packet[]);
+
+CCSDS_PriHdr_t getPrimaryHeader(uint8_t _packet[]);
+CCSDS_TlmSecHdr_t getTlmHeader(uint8_t _packet[]);
+CCSDS_CmdSecHdr_t getCmdHeader(uint8_t _packet[]);
+
+
+//////////////////////////////////////////////////////////////
+//                     Utility Functions                    //
+//////////////////////////////////////////////////////////////
+// utility functions for adding telemetry to buffers
 
 template<typename T> uint8_t addIntToTlm(const T& val, uint8_t payload[], uint8_t start_pos) {
 	for(uint8_t i = 0; i < sizeof(T); i++) { // Loop through each byte
@@ -58,5 +187,7 @@ template<typename T> uint8_t extractFromTlm(T& extractedVal, uint8_t data[], uin
   return start_pos + sizeof(T);
 }
 
-#endif  /* _ccsds_ */
+uint8_t addStrToTlm(char *s, uint8_t payload[], uint8_t start_pos);
+//uint8_t addStrToTlm(const String &s, uint8_t payload[], uint8_t start_pos);
 
+#endif  /* _ccsds_xbee_class_ */
