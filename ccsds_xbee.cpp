@@ -46,11 +46,13 @@ uint32_t CCSDS_Xbee::getSentByteCtr(){
   return _SentByteCtr;
 }
 
-
 uint32_t CCSDS_Xbee::getRcvdByteCtr(){
   return _RcvdByteCtr;
 }
 
+uint32_t CCSDS_Xbee::getSentPktCtr(){
+  return _SentPktCtr;
+}
 
 void CCSDS_Xbee::resetRcvdByteCtr(){
   _RcvdByteCtr = 0;
@@ -60,6 +62,9 @@ void CCSDS_Xbee::resetSentByteCtr(){
   _SentByteCtr = 0;
 }
 
+void CCSDS_Xbee::resetSentPktCtr(){
+  _SentPktCtr = 0;
+}
 
 void CCSDS_Xbee::resetCounters(){
   resetSentByteCtr();
@@ -627,8 +632,11 @@ example:
 	// return successful execution
 	return 1;
 }
-
 int CCSDS_Xbee::readMsg(uint16_t timeout){
+	return readMsg(0);
+}
+
+int CCSDS_Xbee::readMsg(uint8_t packet_data[], uint16_t timeout){
 /*
 
 Extracts the payload and fcncode of a command message and returns it to the user. 
@@ -642,32 +650,32 @@ None
 Return:
 Negative value if error occured, otherwise type (Cmd/Tlm) of packet received
 
-Globals:
-_debug_serial_defined
-
 example:
   uint16_t PktType = readMsg(1);
 
 */
 
   // read a message from the xbee
-  _bytesread = _readXbeeMsg(_packet_data, timeout);
+  uint16_t bytesread = _readXbeeMsg(packet_data, timeout);
         
+  // we got a packet
   if(_bytesread > 0){
     
     // return the packet type
-    return (int)getPacketType(_packet_data);
+    return (int)getPacketType(packet_data);
   }
-  else{
-    // if an error occured, print it
-    if(_bytesread < -1){
-      if(_debug_serial_defined){
-        Serial.print("Error reading, code: ");
-        Serial.print(_bytesread);
-      }
-    }
+	// an error occured
+  else if(_bytesread < 0){
+		if(_debug_serial_defined){
+			_debug_serial->print("Error reading, errorcode: ");
+			_debug_serial->print(bytesread);
+		}
     return -1;
   }
+	// no packet was available
+	else{
+		return 0;
+	}
 }
 
 int CCSDS_Xbee::readCmdMsg(uint8_t params[], uint8_t &fcncode){
@@ -833,6 +841,10 @@ example:
 	}
 }
 
+int CCSDS_Xbee::_readXbeeMsg(uint8_t data[]){
+	return _readXbeeMsg(uint8_t data[],0);
+}
+
 int CCSDS_Xbee::_readXbeeMsg(uint8_t data[], uint16_t timeout){
 /*
 
@@ -854,14 +866,16 @@ new packet has been read or the timeout has expired. Be careful with the time yo
 its effect on the rest of the program.
 
 */
-
-  // readpacket doesn't work when the timeout is 0, prevent the user from doing something stupid
-  if(timeout == 0){
-    timeout = 1;
-  }
     
-  // check if we received a message
-  xbee.readPacket();
+  if(timeout == 0){
+    // check if there's a message waiting
+    xbee.readPacket();
+  }
+	else{
+		// check if there's a message waiting, if not, keep checking until timeout
+		// NOTE: readPacket doesn't work when the timeout is 0
+		xbee.readPacket(timeout);
+	}
   
   // check if a message was available
   if (xbee.getResponse().isAvailable()){
@@ -873,7 +887,7 @@ its effect on the rest of the program.
     if(_debug_serial_defined){
       _debug_serial->println("No packet available");   
     }    
-    return -1;
+    return 0;
   }
   
   // check if we read an error
@@ -959,6 +973,10 @@ its effect on the rest of the program.
 }
 
 void CCSDS_Xbee::logPkt(uint8_t data[], uint8_t len, uint8_t received_flg){
+	logPkt(this->_logfile, data, len, received_flg);
+}
+	
+void CCSDS_Xbee::logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t received_flg){
 /*  logPkt()
  * 
  *  Prints an entry in the given log file containing the given data. Will prepend an
@@ -967,15 +985,15 @@ void CCSDS_Xbee::logPkt(uint8_t data[], uint8_t len, uint8_t received_flg){
  */
 
   // if the file is open
-  if (_logfile) {
+  if (logfile) {
 
     // prepend an indicator of if the data was received or sent
     // R indicates this was received data
     if(received_flg){
-      _logfile.print("R ");
+      logfile.print("R ");
     }
     else{
-      _logfile.print("S ");
+      logfile.print("S ");
     }
     
     // print timestamp to file
@@ -984,15 +1002,15 @@ void CCSDS_Xbee::logPkt(uint8_t data[], uint8_t len, uint8_t received_flg){
     char buf[50];
 
     // print the data in hex
-    _logfile.print(": ");
+    logfile.print(": ");
     for(int i = 0; i < len; i++){
         sprintf(buf, "%02x, ", data[i]);
-        _logfile.print(buf);
+        logfile.print(buf);
      }
-     _logfile.println();
+     logfile.println();
      
      // ensure the data gets written to the file
-     _logfile.flush();
+     logfile.flush();
    }
 }
 

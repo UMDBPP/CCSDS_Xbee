@@ -1,9 +1,21 @@
 #ifndef _ccsds_xbee_
 #define _ccsds_xbee_
 
+
+//////////////////////////////////////////////////////////////
+//                     Library Includes                     //
+//////////////////////////////////////////////////////////////
 #include <XBee.h>
 #include "CCSDS.h"
 
+//////////////////////////////////////////////////////////////
+//                     Opt-Out Library Includes             //
+//////////////////////////////////////////////////////////////
+/*
+ * The user may define the macros '_NO_RTC_' or '_NO_SD_' to disable
+ * the capability of using the RTC or logging and not have those
+ * libraries contribute to the size of the sketch
+ */
 #ifndef _NO_RTC_
 #include "RTClib.h"  // RTC and SoftRTC
 #endif
@@ -12,10 +24,20 @@
 #include <SD.h>
 #endif
 
+
+//////////////////////////////////////////////////////////////
+//                     Compile-Time Configuration           //
+//////////////////////////////////////////////////////////////
 // define the maximum expected length of packet's payload (ie data) to initalize buffer 
 // FIXME: cite a source on the origin of this number. look in xbee documentation
+#ifndef PKT_MAX_LEN
 #define PKT_MAX_LEN 100
+#endif
 
+
+//////////////////////////////////////////////////////////////
+//                     Public Methods                       //
+//////////////////////////////////////////////////////////////
 class CCSDS_Xbee
 {
   
@@ -49,19 +71,24 @@ class CCSDS_Xbee
 
     // reading functions
 	  int readMsg(uint16_t timeout);
+		int readMsg();
 	  int readCmdMsg(uint8_t params[], uint8_t &fcncode);
 	  int readTlmMsg(uint8_t data[]);
 
 	  // utility functions
 	  void printPktInfo(CCSDS_PriHdr_t &_PriHeader);
 	  uint32_t getSentByteCtr();
-    uint32_t getRcvdByteCtr();
+    uint32_t getSentPktCtr();
+		uint32_t getRcvdByteCtr();
     void resetSentByteCtr();
     void resetRcvdByteCtr();
     void resetCounters();
+		void resetSentPktCtr();
+		void logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t received_flg);
   
 	  // reading functions
-	  int _readXbeeMsg(uint8_t data[], uint16_t timeout);
+	  int _readXbeeMsg(uint8_t data[]);
+		int _readXbeeMsg(uint8_t data[], uint16_t timeout);
 	  // sending functions
 	  void sendRawData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size);
 	
