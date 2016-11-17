@@ -36,6 +36,15 @@
 
 
 //////////////////////////////////////////////////////////////
+//                     Enumerations                         //
+//////////////////////////////////////////////////////////////
+
+// Pkt Types
+#define CCSDS_CMD_PKT 1
+#define CCSDS_TLM_PKT 0
+
+
+//////////////////////////////////////////////////////////////
 //                     Public Methods                       //
 //////////////////////////////////////////////////////////////
 class CCSDS_Xbee
@@ -65,26 +74,33 @@ class CCSDS_Xbee
 	  // sending functions
 	  int sendAtCommand(AtCommandRequest atRequest);
 	  int createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload[], uint16_t _payload_size);
-	  int createTlmMsg(uint16_t _APID, uint8_t _payload[], uint16_t _payload_size);
 	  int sendTlmMsg(uint16_t SendAddr, uint16_t APID, uint8_t payload[], uint16_t payload_size);
+    int createCmdMsg(uint8_t pkt_buf[], uint16_t APID, uint8_t FcnCode, uint8_t payload[], uint16_t payload_size);
 	  int sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t payload_size);
 
     // reading functions
-	  int readMsg(uint16_t timeout);
-		int readMsg();
-	  int readCmdMsg(uint8_t params[], uint8_t &fcncode);
-	  int readTlmMsg(uint8_t data[]);
+	  int readMsg(uint8_t packet_data[], uint16_t timeout);
+		int readMsg(uint8_t packet_data[]);
 
 	  // utility functions
+    void printHex(int num, uint8_t precision);
 	  void printPktInfo(CCSDS_PriHdr_t &_PriHeader);
+#ifndef _NO_SD_
+    void logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t received_flg);
+#endif
+
+    // counter getters 
 	  uint32_t getSentByteCtr();
     uint32_t getSentPktCtr();
 		uint32_t getRcvdByteCtr();
+    uint32_t getRcvdPktCtr();
+    
+    // counter resetters
     void resetSentByteCtr();
     void resetRcvdByteCtr();
-    void resetCounters();
 		void resetSentPktCtr();
-		void logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t received_flg);
+    void resetRcvdPktCtr();
+    void resetCounters();
   
 	  // reading functions
 	  int _readXbeeMsg(uint8_t data[]);
@@ -116,9 +132,6 @@ class CCSDS_Xbee
     File _logfile;
 #endif
 
-	  // initalize buffer to hold packets for processing before its passed to the user
-	  uint8_t _packet_data[PKT_MAX_LEN];
-
 	  // initalize counter to hold number of bytes read
 	  uint32_t _bytesread;
 	  uint32_t _bytessent;
@@ -129,12 +142,11 @@ class CCSDS_Xbee
     uint32_t _SentByteCtr = 0;
     uint32_t _RcvdByteCtr = 0;
     
-    void print_time();
+    void print_time(File logfile);
+#ifndef _NO_SD_
     void logPkt(uint8_t data[], uint8_t len, uint8_t received_flg);
-    
+#endif
 };
-
-void printHex(int num, uint8_t precision);
 
 //////////////////////////////////////////////////////////////
 //                     Utility Functions                    //

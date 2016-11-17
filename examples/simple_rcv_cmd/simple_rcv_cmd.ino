@@ -30,6 +30,15 @@ CCSDS_Xbee ccsds_xbee;
 uint16_t cycle_ctr = 0;
 
 void setup(){
+
+  // Init Serials
+  /*
+   * Note that the xbee's have only been tested at 9600baud at this time and
+   * so the serial that the xbee is using must be set to this baud rate.
+   */
+  Serial.begin(250000);
+  Serial3.begin(9600);
+  
   //// Init Xbee
   /* InitXbee() will configure the attached xbee so that it can talk to
    *   xbees which also use this library. It also handles the initalization
@@ -52,7 +61,9 @@ void setup(){
     Serial.print("XBee Failed to Initialize with Error Code: ");
     Serial.println(initstat);
   }
-  
+
+  // initalize pin13 (the LED)
+  pinMode(LED_BUILTIN, OUTPUT);
 }
 void loop(){
 
@@ -69,61 +80,79 @@ void loop(){
 	// initalize a counter to keep track of packet length
 	uint8_t pktLength = 0;
 
-	/*
-	 * The code below compiles a telemetry packet by sequentially adding 
-	 * telemetry points to the buffer using the provided helper functions.
-	 * The available helper functions are:
-	 *    addIntToTlm
-	 *    addFloatToTlm
-	 *    addStrToTlm
-	 *  Each of these functions take the value to be added as the first 
-	 * argument, the buffer to add it to in the second argument, and the
-	 * position to add the point in the buffer as the third argument and 
-	 * return the new position (with the telemetry point added). These 
-	 * functions can be chained together in any manner as shown below.
-	 */
-	
-  // add the cycle counter to telemetry
-	payload_size = addIntToTlm(cycle_ctr, payload_buff, payload_size);
-	
-	// add the current processor time (in milliseconds) to telemetry
-	uint32_t current_time_ms = millis();
-	payload_size = addIntToTlm(current_time_ms, payload_buff, payload_size);
-	
-	// add the current processor time (in sec) to telemetry
-	float current_time_sec = current_time_ms / 1000.0;
-	payload_size = addFloatToTlm(current_time_sec, payload_buff, payload_size);
-	
-	// add the sketch name to telemetry
-	char sketch_name[] = "simple_tlm_pkt";
-	payload_size = addStrToTlm(sketch_name, payload_buff, payload_size);
-	
-	// record how many packets have been sent before we send a new one
-	uint32_t pre_send = ccsds_xbee.getSentPktCtr();
-	
-	/*
-	 * The code below creates the packet's header, appends the payload, and sends
-	 * the packet. Each packet is identified by an APID (Application ID), which is 
-	 * the second argument to the createTlmMsg function below. For this example
-	 * we've defined the APID as 0xFF (255).
-	 *
-	 * The first argument to sendTlmMsg is the xbee address to send the message to,
-	 * the second argument is the APID, the third is the buffer containing the packet's
-	 * payload, and the third is the length of the payload. createTlmMsg returns 
-	 * the total length of the packet (header+payload) or a negative value if an 
-	 * error occured.
-	 */ 
-	ccsds_xbee.sendTlmMsg(0x0003, 0x00FF, payload_buff, payload_size);
-	
-	// print a message indicating how many packets we sent
-	Serial.print("Sent ");
-	Serial.print(ccsds_xbee.getSentPktCtr()-pre_send);
-	Serial.println(" packets");
+  /*
+   * Calling readMsg will check if the xbee has received a message. If
+   * it has, it will place the entire message in the buffer supplied in
+   * the first argument and return the number of bytes read. If not, it 
+   * will return 0. If an error occurs a negative value will be returned.
+   * 
+   * You may also call readMsg with a timeout by supplying an optional
+   * second parameter containing the number of millis seconds to wait 
+   * for a message. THIS IS A BLOCKING CALL.
+   */
+  uint8_t bytes_read = 0;
+  bytes_read = ccsds_xbee.readMsg(Pkt_Buff);
 
-	// increment the cycle counter
-  cycle_ctr++;
+  if(bytes_read < 0){
+    Serial.print("Read failed with error code:");
+    Serial.println(bytes_read);
+  }
+  else if(bytes_read == 0){
+    Serial.println("No messages available");
+  }
+  else{
+    Serial.println("Message received!");
+
+    // call a function to process the packet
+    packet_processing(Pkt_Buff);
+  }
 
 	// wait a bit
+  /*
+   * In general, you would probably not want to wait this long between reads
+   * because the read function will read all packets available, which for long
+   * times between reads, may be several. This example code is only set up to 
+   * process one packet which begins at the beginning of the buffer, so all other
+   * commands would be ignored.
+   * 
+   * For this example though, just don't send commands too quickly.
+   */
   delay(1000);
   
+}
+
+void packet_processing(uint8_t Pkt_Buff[]){
+  /*
+   * APIDs define the type of packet, so we first check if the packet is 
+   * the type we expect. For the purposes of this example, lets say that
+   * this payload expects an APID of 100 to contain a command. We check if
+   * the packet has an APID of 100, if the packet is a command packet, and 
+   * if the checksum is correct. If so we process it as a command.
+   */
+  if(getAPID(Pkt_Buff) == 100 && getPacketType(Pkt_Buff) == CCSDS_CMD_PKT && validateChecksum(Pkt_Buff)){
+
+    /*
+     * The type of command is identified by the function code included in 
+     * the header. In this case we've defined 2 commands.
+     */
+    switch(getCmdFunctionCode(Pkt_Buff)){
+      case 1:{
+        Serial.println("LED_ON command received");
+        // turn on the LED
+        digitalWrite(LED_BUILTIN, HIGH);
+      }
+      case 2:{
+        Serial.println("LED_OFF command received");
+        // turn off the LED
+        digitalWrite(LED_BUILTIN, LOW);  
+      }
+      default:{
+        Serial.println("Command with unrecognized function code received");
+      }
+    }
+  }
+  else{
+    Serial.println("Invalid command received");
+  }
+    
 }

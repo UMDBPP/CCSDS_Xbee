@@ -9,6 +9,7 @@ int CCSDS_Xbee::init(uint16_t address, uint16_t PanID, Stream &xbee_serial, Stre
   return init(address, PanID, xbee_serial);
 }
 
+#ifndef _NO_SD_
 int CCSDS_Xbee::start_logging(File logfile){
   this->_logfile = logfile;
 	this->_logfile_defined = true;
@@ -19,7 +20,8 @@ int CCSDS_Xbee::end_logging(){
 	this->_logfile_defined = false;
   return 1;
 }
-
+#endif
+#ifndef _NO_RTC_
 int CCSDS_Xbee::add_rtc(RTC_DS1307 rtc){
   this->_rtc = rtc;
 	this->_rtc_defined = true;
@@ -30,6 +32,7 @@ int CCSDS_Xbee::remove_rtc(){
 	this->_rtc_defined = false;
   return 1;
 }
+#endif
 
 int CCSDS_Xbee::add_debug_serial(Stream &debug_serial){
  	this->_debug_serial = &debug_serial;
@@ -50,6 +53,11 @@ uint32_t CCSDS_Xbee::getRcvdByteCtr(){
   return _RcvdByteCtr;
 }
 
+uint32_t CCSDS_Xbee::getRcvdPktCtr(){
+  return _RcvdPktCtr;
+}
+
+
 uint32_t CCSDS_Xbee::getSentPktCtr(){
   return _SentPktCtr;
 }
@@ -66,9 +74,15 @@ void CCSDS_Xbee::resetSentPktCtr(){
   _SentPktCtr = 0;
 }
 
+void CCSDS_Xbee::resetRcvdPktCtr(){
+  _SentPktCtr = 0;
+}
+
 void CCSDS_Xbee::resetCounters(){
   resetSentByteCtr();
   resetSentByteCtr();
+  resetSentPktCtr();
+  resetRcvdPktCtr();
 }
 
 int CCSDS_Xbee::init(uint16_t address, uint16_t PanID, Stream &xbee_serial) {
@@ -208,7 +222,7 @@ example:
 	return STATUS;
 }
 
-void printHex(int num, uint8_t precision) {
+void CCSDS_Xbee::printHex(int num, uint8_t precision) {
 /*
 prints the value with the specified number of digits in hex. will not
 do anything if _debug_serial_defined (global variable) is set to false
@@ -407,8 +421,6 @@ example:
 void CCSDS_Xbee::sendRawData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size){
 /*
 
-INTENDED FOR INTERNAL USE ONLY
-
 Function to send data to a remote xbee. Takes as arguments the address
 of the remote xbee to send to, the data to be sent, and the size of the 
 data to be sent.
@@ -488,6 +500,7 @@ int CCSDS_Xbee::createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload
 	setPacketLength(pkt_buf, _payload_size+sizeof(CCSDS_TlmPkt_t));
 
 	// fill secondary header fields
+#ifndef _NO_RTC_
 	if(_rtc_defined){
 		// get the current time from the RTC
     DateTime now = _rtc.now();
@@ -495,10 +508,13 @@ int CCSDS_Xbee::createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload
 	  setTlmTimeSec(pkt_buf, now.unixtime());
 	  setTlmTimeSubSec(pkt_buf, 0);
   }else{
+#endif
 	  setTlmTimeSec(pkt_buf, millis()/1000);
 	  setTlmTimeSubSec(pkt_buf, millis()%1000);
+#ifndef _NO_RTC_
 	}
-  
+#endif
+
 	// copy the packet data
 	memcpy(pkt_buf+sizeof(CCSDS_TlmPkt_t), _payload, _payload_size);
 
@@ -508,11 +524,47 @@ int CCSDS_Xbee::createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload
 	return _payload_size;
 }
 
-int CCSDS_Xbee::createTlmMsg(uint16_t _APID, uint8_t _payload[], uint16_t _payload_size){
-  return createTlmMsg(this->_packet_data,  _APID,  _payload,  _payload_size);
+int CCSDS_Xbee::createCmdMsg(uint8_t pkt_buf[], uint16_t APID, uint8_t FcnCode, uint8_t payload[], uint16_t payload_size){
+	// if the user attempts to send a packet that's too long, return failure
+	if(payload_size + sizeof(CCSDS_TlmPkt_t) > PKT_MAX_LEN){
+		if(_debug_serial_defined){
+			Serial.println("Packet too long... not sending");
+		}
+		
+		// return a failure
+		return -1;
+	}
+
+  // clear the buffer
+	//memset(pkt_buf, 0x00, pkt_buf+sizeof(CCSDS_TlmPkt_t));
+
+	// fill primary header fields
+	setAPID(pkt_buf, APID);
+	setSecHdrFlg(pkt_buf, 1);
+	setPacketType(pkt_buf, 0);
+	setVer(pkt_buf, 0);
+	setSeqCtr(pkt_buf, _SentPktCtr);
+	setSeqFlg(pkt_buf, 0x03);
+	setPacketLength(pkt_buf, payload_size+sizeof(CCSDS_TlmPkt_t));
+
+	// fill secondary header fields
+	setCmdChecksum(pkt_buf, 0x0);
+	setCmdFunctionCode(pkt_buf, FcnCode);
+
+	// write the checksum after the header's been added
+	setCmdChecksum(pkt_buf, CCSDS_ComputeCheckSum((CCSDS_CmdPkt_t*) pkt_buf));
+  
+	// copy the packet data
+	memcpy(pkt_buf+sizeof(CCSDS_TlmPkt_t), payload, payload_size);
+
+	// update the payload_size to include the headers
+	payload_size += sizeof(CCSDS_TlmPkt_t);
+	
+	return payload_size;
 }
 
-int CCSDS_Xbee::sendTlmMsg(uint16_t _SendAddr, uint16_t _APID, uint8_t _payload[], uint16_t _payload_size){
+
+int CCSDS_Xbee::sendTlmMsg(uint16_t SendAddr, uint16_t APID, uint8_t payload[], uint16_t payload_size){
 /*
 
 Formats a CCSDS telemetry header and send the data to the indicated address.
@@ -537,10 +589,15 @@ example:
 
 */	
 
-	if(createTlmMsg(_APID, _payload, _payload_size) > 0){
+  uint8_t pkt_buffer[PKT_MAX_LEN];
+  uint8_t pkt_size = 0;
+  
+  pkt_size = createTlmMsg(pkt_buffer, APID, payload, payload_size);
+
+	if(pkt_size > 0){
 	
 		// send the message
-		sendRawData(_SendAddr, _packet_data, _payload_size);
+		sendRawData(SendAddr, pkt_buffer, pkt_size);
 
 		// return successful execution
 		return 1;
@@ -551,7 +608,7 @@ example:
 }
 
   
-int CCSDS_Xbee::sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t _payload_size){
+int CCSDS_Xbee::sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t payload_size){
 /*
 
 Formats a CCSDS command header and send the data to the indicated address.
@@ -577,63 +634,28 @@ example:
 
 */	
 
-	// if the user attempts to send a packet that's too long, return failure
-	if(_payload_size + sizeof(CCSDS_CmdPkt_t) > PKT_MAX_LEN){
-		if(_debug_serial_defined){
-		  Serial.println("Packet too long... not sending");
-		}
+	uint8_t pkt_buffer[PKT_MAX_LEN];
+  uint8_t pkt_size = 0;
+  
+  pkt_size = createCmdMsg(pkt_buffer, APID, fcncode, payload, payload_size);
 
-		// return a failure
+	if(pkt_size > 0){
+	
+		// send the message
+		sendRawData(SendAddr, pkt_buffer, pkt_size);
+
+		// return successful execution
+		return 1;
+	}
+	else{
 		return -1;
 	}
-
-	// allocate the buffer to compile the packet in
-	uint8_t _packet_data[_payload_size + sizeof(CCSDS_CmdPkt_t)];
-
-	// fill primary header fields
-	setAPID(_packet_data, APID);
-	setSecHdrFlg(_packet_data, 1);
-	setPacketType(_packet_data, 1);
-	setVer(_packet_data, 0);
-	setSeqCtr(_packet_data, _SentPktCtr);
-	// FIXME: Make sure that 3 indicates a full packet
-	// FIXME: Add multipacket support
-	setSeqFlg(_packet_data, 0x03);
-	setPacketLength(_packet_data, _payload_size+sizeof(CCSDS_CmdPkt_t));
-
-	// fill secondary header fields
-	if(_rtc_defined){
-		// get the current time from the RTC
-    DateTime now = _rtc.now();
-		// fill the fields
-	  setTlmTimeSec(_packet_data, now.unixtime());
-	  setTlmTimeSubSec(_packet_data, 0);
-  }else{
-	  setTlmTimeSec(_packet_data, millis()/1000);
-	  setTlmTimeSubSec(_packet_data, millis()%1000);
-	}
-	
-	// fill secondary header fields
-	setCmdChecksum(_packet_data, 0x0);
-	setCmdFunctionCode(_packet_data, fcncode);
-
-	// write the checksum after the header's been added
-	setCmdChecksum(_packet_data, CCSDS_ComputeCheckSum((CCSDS_CmdPkt_t*) _packet_data));
-
-	// copy the packet data
-	memcpy(_packet_data+sizeof(CCSDS_CmdPkt_t), payload, _payload_size);
-
-	// update the payload_size to include the headers
-	_payload_size += sizeof(CCSDS_CmdPkt_t);
-  
-	// send the message
-	sendRawData(SendAddr, _packet_data, _payload_size);
-
-	// return successful execution
-	return 1;
 }
-int CCSDS_Xbee::readMsg(uint16_t timeout){
-	return readMsg(0);
+
+int CCSDS_Xbee::readMsg(uint8_t packet_data[]){
+  
+  // call the version of readMsg with 0 timeout
+	return readMsg(packet_data,0);
 }
 
 int CCSDS_Xbee::readMsg(uint8_t packet_data[], uint16_t timeout){
@@ -678,102 +700,6 @@ example:
 	}
 }
 
-int CCSDS_Xbee::readCmdMsg(uint8_t params[], uint8_t &fcncode){
-/*
-
-Extracts the payload and fcncode of a command message and returns it to the user. 
-
-Inputs: 
-None
-
-Outputs:
-uint8_t params[]
-uint8_t fcncode
-
-Return:
-Number of bytes read into data[]
-
-Globals:
-None
-
-example:
-	if(readMsg(1)){
-		int lengthofparams = readCmdMsg(&params, &fcncode);
-	}
-
-*/
-		
-	// FIXME: handle case where it doesn't exist
-	// FIXME: do we still want to return the data to the user if the header is missing?
-	// FIXME: do we still want to return the data to the user if the checksum doesn't validate?
-		
-	// if the secondary header exists, extract the info from it
-	if(getSecHdrFlg(_packet_data)){
-		
-		fcncode = getCmdFunctionCode(_packet_data);
-	
-		// FIXME: Add checksum checking and handling mismatched checksum
-		/*
-		if(CCSDS_ValidCheckSum ((CCSDS_CmdPkt_t*) (_packet_data))){
-		Serial.println("Invalid");
-		_CmdRejCtr++;
-		return -1;
-		}
-		*/
-	
-	}
-	else{
-		
-		// FIXME: indicate an error somehow
-		fcncode = 0;
-
-	}
-	
-	// copy the parameters into the user's pointer
-	memcpy(params, _packet_data+sizeof(CCSDS_CmdPkt_t), _bytesread-sizeof(CCSDS_CmdPkt_t));
-
-	// return param length
-	return getPacketLength(_packet_data)-sizeof(CCSDS_CmdPkt_t);
-	
-}
-
-int CCSDS_Xbee::readTlmMsg(uint8_t data[]){
-/*
-
-Extracts the payload of a telemetry message and returns it to the user. 
-
-Inputs: 
-None
-
-Outputs:
-uint8_t data[]
-
-Return:
-Number of bytes read into data[]
-
-Globals:
-None
-
-example:
-	if(!readMsg(1)){
-		int lengthofdata = readTlmMsg(data);
-	}
-
-*/
-
-	// FIXME: should return time to user if they want it
-	if(getSecHdrFlg(_packet_data)){
-		//uint32_t time_sec = getTlmTimeSec(_packet_data);
-		//uint16_t time_subsec = getTlmTimeSubSec(_packet_data);
-	}
-
-	// copy the parameters into the user's pointer
-	memcpy(data, _packet_data+sizeof(CCSDS_TlmPkt_t), _bytesread-sizeof(CCSDS_TlmPkt_t));
-
-	// return param length
-	return getPacketLength(_packet_data)-sizeof(CCSDS_TlmPkt_t);
-	
-}
 
 void CCSDS_Xbee::printPktInfo(CCSDS_PriHdr_t &_PriHeader){
 /*
@@ -800,20 +726,20 @@ example:
 	if(_debug_serial_defined){
 		
 		// print info from the primary header
-		Serial.print("APID: ");
-		Serial.print(CCSDS_RD_APID(_PriHeader));
-		Serial.print(", SecHdr: ");
-		Serial.print(CCSDS_RD_SHDR(_PriHeader));
-		Serial.print(", Type: ");
-		Serial.print(CCSDS_RD_TYPE(_PriHeader));
-		Serial.print(", Ver: ");
-		Serial.print(CCSDS_RD_VERS(_PriHeader));
-		Serial.print(", SeqCnt: ");
-		Serial.print(CCSDS_RD_SEQ(_PriHeader));
-		Serial.print(", SegFlag: ");
-		Serial.print(CCSDS_RD_SEQFLG(_PriHeader));
-		Serial.print(", Len: ");
-		Serial.println(CCSDS_RD_LEN(_PriHeader));
+		_debug_serial->print("APID: ");
+		_debug_serial->print(CCSDS_RD_APID(_PriHeader));
+		_debug_serial->print(", SecHdr: ");
+		_debug_serial->print(CCSDS_RD_SHDR(_PriHeader));
+		_debug_serial->print(", Type: ");
+		_debug_serial->print(CCSDS_RD_TYPE(_PriHeader));
+		_debug_serial->print(", Ver: ");
+		_debug_serial->print(CCSDS_RD_VERS(_PriHeader));
+		_debug_serial->print(", SeqCnt: ");
+		_debug_serial->print(CCSDS_RD_SEQ(_PriHeader));
+		_debug_serial->print(", SegFlag: ");
+		_debug_serial->print(CCSDS_RD_SEQFLG(_PriHeader));
+		_debug_serial->print(", Len: ");
+		_debug_serial->println(CCSDS_RD_LEN(_PriHeader));
 
 		// process command and telemetry secondary headers
 		if(CCSDS_RD_TYPE(_PriHeader)){
@@ -822,10 +748,10 @@ example:
 			CCSDS_CmdSecHdr_t _CmdSecHeader = *(CCSDS_CmdSecHdr_t*) (&_PriHeader+sizeof(CCSDS_PriHdr_t));
 
 			// print the command-specific data
-			Serial.print("FcnCode: ");
-			Serial.print(CCSDS_RD_FC(_CmdSecHeader));
-			Serial.print(", CkSum: ");
-			Serial.println(CCSDS_RD_CHECKSUM(_CmdSecHeader));
+			_debug_serial->print("FcnCode: ");
+			_debug_serial->print(CCSDS_RD_FC(_CmdSecHeader));
+			_debug_serial->print(", CkSum: ");
+			_debug_serial->println(CCSDS_RD_CHECKSUM(_CmdSecHeader));
 		}
 		else{
 
@@ -833,22 +759,23 @@ example:
 			CCSDS_TlmSecHdr_t _TlmSecHeader = *(CCSDS_TlmSecHdr_t*) (&_PriHeader+sizeof(CCSDS_PriHdr_t));
 
 			// print the telemetry-specific data
-			Serial.print("Sec: ");
-			Serial.print(CCSDS_RD_SEC_HDR_SEC(_TlmSecHeader));
-			Serial.print("Subsec: ");
-			Serial.println(CCSDS_RD_SEC_HDR_SUBSEC(_TlmSecHeader));
+			_debug_serial->print("Sec: ");
+			_debug_serial->print(CCSDS_RD_SEC_HDR_SEC(_TlmSecHeader));
+			_debug_serial->print("Subsec: ");
+			_debug_serial->println(CCSDS_RD_SEC_HDR_SUBSEC(_TlmSecHeader));
 		}   
 	}
 }
 
 int CCSDS_Xbee::_readXbeeMsg(uint8_t data[]){
-	return _readXbeeMsg(uint8_t data[],0);
+  
+  // call the other version with 0 timeout
+	return _readXbeeMsg(data, 0);
 }
 
 int CCSDS_Xbee::_readXbeeMsg(uint8_t data[], uint16_t timeout){
 /*
 
-INTENDED FOR INTERNAL USE ONLY
 
 Reads a message from the xbee, checks if its a ACK, and if not, extracts the data and 
 returns it.
@@ -972,9 +899,13 @@ its effect on the rest of the program.
     
 }
 
+#ifndef _NO_SD_
 void CCSDS_Xbee::logPkt(uint8_t data[], uint8_t len, uint8_t received_flg){
+  
+  // call the version which logs to the local logfile
 	logPkt(this->_logfile, data, len, received_flg);
 }
+#endif
 	
 void CCSDS_Xbee::logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t received_flg){
 /*  logPkt()
@@ -997,7 +928,7 @@ void CCSDS_Xbee::logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t recei
     }
     
     // print timestamp to file
-    print_time();
+    print_time(logfile);
     
     char buf[50];
 
@@ -1014,7 +945,7 @@ void CCSDS_Xbee::logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t recei
    }
 }
 
-void CCSDS_Xbee::print_time(){
+void CCSDS_Xbee::print_time(File logfile){
 /*  print_time()
  * 
  *  Prints the current time to the given log file
@@ -1031,11 +962,11 @@ void CCSDS_Xbee::print_time(){
       char buf[50];
       //sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),(nowMS - start_millis)%1000);  // print milliseconds);
       sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),millis()%1000);  // print milliseconds);
-      _logfile.print(buf);
+      logfile.print(buf);
     }
     else{
 #endif
-      _logfile.print(millis());
+      logfile.print(millis());
 #ifndef _NO_RTC_
     }
 #endif

@@ -30,13 +30,22 @@ CCSDS_Xbee ccsds_xbee;
 uint16_t cycle_ctr = 0;
 
 void setup(){
+
+  // Init Serials
+  /*
+   * Note that the xbee's have only been tested at 9600baud at this time and
+   * so the serial that the xbee is using must be set to this baud rate.
+   */
+  Serial.begin(250000);
+  Serial3.begin(9600);
+  
   //// Init Xbee
   /* InitXbee() will configure the attached xbee so that it can talk to
    *   xbees which also use this library. It also handles the initalization
    *   of the adafruit xbee library. 
    *   
    *   The arguments passed to init() are:
-   *   init(uint16_t MY_Addr, uint16_t PanID, Stream &xbee_serial)
+   *   init(uint16_t MY_Addr, uint16_t PanID, Stream &xbee_serial, Steadm $debug_serial)
    *   
    *   MY_Addr is the address of this xbee. All xbee addresses must be 
    *   unqiue. The PanID defines the network for the xbee. All xbees must
@@ -44,8 +53,12 @@ void setup(){
    *   is the arduino Serial object that the Tx/Rx of the Xbee are connected 
    *   to. Then talking to the xbee the library will write to and read from
    *   that serial.
+   *   
+   *   The fourth argument to init is optional. When used, debugging info will 
+   *   be printed to the serial object supplied in the 4th argument. For a 
+   *   normal system this would not be used.
    */
-  uint8_t initstat = ccsds_xbee.init(0x0002, 0x0B0B, Serial3);
+  uint8_t initstat = ccsds_xbee.init(0x0002, 0x0B0B, Serial3, Serial);
   if(!initstat) {
     Serial.println("XBee Initialized!");
   } else {
@@ -109,9 +122,9 @@ void loop(){
 	 *
 	 * The first argument to sendTlmMsg is the xbee address to send the message to,
 	 * the second argument is the APID, the third is the buffer containing the packet's
-	 * payload, and the third is the length of the payload. createTlmMsg returns 
-	 * the total length of the packet (header+payload) or a negative value if an 
-	 * error occured.
+	 * payload, and the third is the length of the payload. sendTlmMsg returns 1 on 
+   * success and -1 on failure. You can also check success by examining the packet
+   * counters as shown below.
 	 */ 
 	ccsds_xbee.sendTlmMsg(0x0003, 0x00FF, payload_buff, payload_size);
 	
