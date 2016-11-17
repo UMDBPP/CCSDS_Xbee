@@ -76,67 +76,67 @@ void loop(){
   // create a buffer in which to compile the payload of the packet
   uint8_t payload_buff[100];
 	
-	// initalize a counter to keep track of the length of the payload
-	uint8_t payload_size = 0;
+  // initalize a counter to keep track of the length of the payload
+  uint8_t payload_size = 0;
 	
-	// initalize a counter to keep track of packet length
-	uint8_t pktLength = 0;
+  // initalize a counter to keep track of packet length
+  uint8_t pktLength = 0;
 
-	/*
-	 * The code below compiles a telemetry packet by sequentially adding 
-	 * telemetry points to the buffer using the provided helper functions.
-	 * The available helper functions are:
-	 *    addIntToTlm
-	 *    addFloatToTlm
-	 *    addStrToTlm
-	 *  Each of these functions take the value to be added as the first 
-	 * argument, the buffer to add it to in the second argument, and the
-	 * position to add the point in the buffer as the third argument and 
-	 * return the new position (with the telemetry point added). These 
-	 * functions can be chained together in any manner as shown below.
-	 */
+ /*
+  * The code below compiles a telemetry packet by sequentially adding 
+  * telemetry points to the buffer using the provided helper functions.
+  * The available helper functions are:
+  *    addIntToTlm
+  *    addFloatToTlm
+  *    addStrToTlm
+  *  Each of these functions take the value to be added as the first 
+  * argument, the buffer to add it to in the second argument, and the
+  * position to add the point in the buffer as the third argument and 
+  * return the new position (with the telemetry point added). These 
+  * functions can be chained together in any manner as shown below.
+  */
 	
   // add the cycle counter to telemetry
-	payload_size = addIntToTlm(cycle_ctr, payload_buff, payload_size);
+  payload_size = addIntToTlm(cycle_ctr, payload_buff, payload_size);
 	
-	// add the current processor time (in milliseconds) to telemetry
-	uint32_t current_time_ms = millis();
-	payload_size = addIntToTlm(current_time_ms, payload_buff, payload_size);
+  // add the current processor time (in milliseconds) to telemetry
+  uint32_t current_time_ms = millis();
+  payload_size = addIntToTlm(current_time_ms, payload_buff, payload_size);
 	
-	// add the current processor time (in sec) to telemetry
-	float current_time_sec = current_time_ms / 1000.0;
-	payload_size = addFloatToTlm(current_time_sec, payload_buff, payload_size);
+  // add the current processor time (in sec) to telemetry
+  float current_time_sec = current_time_ms / 1000.0;
+  payload_size = addFloatToTlm(current_time_sec, payload_buff, payload_size);
 	
-	// add the sketch name to telemetry
-	char sketch_name[] = "simple_tlm_pkt";
-	payload_size = addStrToTlm(sketch_name, payload_buff, payload_size);
+  // add the sketch name to telemetry
+  char sketch_name[] = "simple_tlm_pkt";
+  payload_size = addStrToTlm(sketch_name, payload_buff, payload_size);
 	
-	// record how many packets have been sent before we send a new one
-	uint32_t pre_send = ccsds_xbee.getSentPktCtr();
+  // record how many packets have been sent before we send a new one
+  uint32_t pre_send = ccsds_xbee.getSentPktCtr();
 	
-	/*
-	 * The code below creates the packet's header, appends the payload, and sends
-	 * the packet. Each packet is identified by an APID (Application ID), which is 
-	 * the second argument to the createTlmMsg function below. For this example
-	 * we've defined the APID as 0xFF (255).
-	 *
-	 * The first argument to sendTlmMsg is the xbee address to send the message to,
-	 * the second argument is the APID, the third is the buffer containing the packet's
-	 * payload, and the third is the length of the payload. sendTlmMsg returns 1 on 
-   * success and -1 on failure. You can also check success by examining the packet
-   * counters as shown below.
-	 */ 
-	ccsds_xbee.sendTlmMsg(0x0003, 0x00FF, payload_buff, payload_size);
+ /*
+  * The code below creates the packet's header, appends the payload, and sends
+  * the packet. Each packet is identified by an APID (Application ID), which is 
+  * the second argument to the createTlmMsg function below. For this example
+  * we've defined the APID as 0xFF (255).
+  *
+  * The first argument to sendTlmMsg is the xbee address to send the message to,
+  * the second argument is the APID, the third is the buffer containing the packet's
+  * payload, and the third is the length of the payload. sendTlmMsg returns 1 on 
+  * success and -1 on failure. You can also check success by examining the packet
+  * counters as shown below.
+  */ 
+  ccsds_xbee.sendTlmMsg(0x0003, 0x00FF, payload_buff, payload_size);
 	
-	// print a message indicating how many packets we sent
-	Serial.print("Sent ");
-	Serial.print(ccsds_xbee.getSentPktCtr()-pre_send);
-	Serial.println(" packets");
+  // print a message indicating how many packets we sent
+  Serial.print("Sent ");
+  Serial.print(ccsds_xbee.getSentPktCtr()-pre_send);
+  Serial.println(" packets");
 
-	// increment the cycle counter
+  // increment the cycle counter
   cycle_ctr++;
 
-	// wait a bit
+  // wait a bit
   delay(1000);
   
 }
