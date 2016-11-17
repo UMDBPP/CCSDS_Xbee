@@ -63,8 +63,8 @@ class CCSDS_Xbee
     CCSDS_Xbee();
 	
     // Initalization functions
-	  int init(uint16_t address, uint16_t PanID, Stream &xbee_serial);
-	  int init(uint16_t address, uint16_t PanID, Stream &xbee_serial, Stream &debug_serial);
+    int init(uint16_t address, uint16_t PanID, Stream &xbee_serial);
+    int init(uint16_t address, uint16_t PanID, Stream &xbee_serial, Stream &debug_serial);
 
 #ifndef _NO_SD_
     int start_logging(File logfile);
@@ -77,60 +77,60 @@ class CCSDS_Xbee
     int add_debug_serial(Stream &debug_serial);
     int remove_debug_serial();
 
-	  // sending functions
-	  int sendAtCommand(AtCommandRequest atRequest);
-	  int createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload[], uint16_t _payload_size);
-	  int sendTlmMsg(uint16_t SendAddr, uint16_t APID, uint8_t payload[], uint16_t payload_size);
+    // sending functions
+    int sendAtCommand(AtCommandRequest atRequest);
+    int createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload[], uint16_t _payload_size);
+    int sendTlmMsg(uint16_t SendAddr, uint16_t APID, uint8_t payload[], uint16_t payload_size);
     int createCmdMsg(uint8_t pkt_buf[], uint16_t APID, uint8_t FcnCode, uint8_t payload[], uint16_t payload_size);
-	  int sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t payload_size);
+    int sendCmdMsg(uint16_t SendAddr, uint16_t APID, uint8_t fcncode, uint8_t payload[], uint16_t payload_size);
 
     // reading functions
-	  int readMsg(uint8_t packet_data[], uint16_t timeout);
-		int readMsg(uint8_t packet_data[]);
+    int readMsg(uint8_t packet_data[], uint16_t timeout);
+    int readMsg(uint8_t packet_data[]);
 
-	  // utility functions
+    // utility functions
     void printHex(int num, uint8_t precision);
-	  void printPktInfo(CCSDS_PriHdr_t &_PriHeader);
+    void printPktInfo(CCSDS_PriHdr_t &_PriHeader);
 #ifndef _NO_SD_
     void logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t received_flg);
 #endif
 
     // counter getters 
-	  uint32_t getSentByteCtr();
+    uint32_t getSentByteCtr();
     uint32_t getSentPktCtr();
-		uint32_t getRcvdByteCtr();
+    uint32_t getRcvdByteCtr();
     uint32_t getRcvdPktCtr();
     
     // counter resetters
     void resetSentByteCtr();
     void resetRcvdByteCtr();
-		void resetSentPktCtr();
+    void resetSentPktCtr();
     void resetRcvdPktCtr();
     void resetCounters();
   
-	  // reading functions
-	  int _readXbeeMsg(uint8_t data[]);
-		int _readXbeeMsg(uint8_t data[], uint16_t timeout);
-	  // sending functions
-	  void sendRawData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size);
+    // reading functions
+    int _readXbeeMsg(uint8_t data[]);
+    int _readXbeeMsg(uint8_t data[], uint16_t timeout);
+    // sending functions
+    void sendRawData(uint16_t SendAddr, uint8_t payload[], uint16_t payload_size);
 	
 //////////////////////////////////////////////////////////////
 //                     Private Methods                      //
 //////////////////////////////////////////////////////////////
   private:
     // initalize an Xbee object from the adafruit xbee library
-	  XBee xbee = XBee();
+    XBee xbee = XBee();
 	
 #ifndef _NO_RTC_
     // RTC used for time tagging packets
-	  bool _rtc_defined = false;
-	  RTC_DS1307 _rtc;
+    bool _rtc_defined = false;
+    RTC_DS1307 _rtc;
 #endif
 
-	  // flag controlling if debugging statements are printed to Serial0
-	  // set to false by default, set by user by calling 4 argument InitXbee
-	  bool _debug_serial_defined = false;
-	  Stream* _debug_serial;
+    // flag controlling if debugging statements are printed to Serial0
+    // set to false by default, set by user by calling 4 argument InitXbee
+    bool _debug_serial_defined = false;
+    Stream* _debug_serial;
 
 #ifndef _NO_SD_
     // Log file 
@@ -138,13 +138,13 @@ class CCSDS_Xbee
     File _logfile;
 #endif
 
-	  // initalize counter to hold number of bytes read
-	  uint32_t _bytesread;
-	  uint32_t _bytessent;
+    // initalize counter to hold number of bytes read
+    uint32_t _bytesread;
+    uint32_t _bytessent;
 
-	  // initalize counters to track packet I/O
-	  uint32_t _SentPktCtr = 0;
-	  uint32_t _RcvdPktCtr = 0;
+    // initalize counters to track packet I/O
+    uint32_t _SentPktCtr = 0;
+    uint32_t _RcvdPktCtr = 0;
     uint32_t _SentByteCtr = 0;
     uint32_t _RcvdByteCtr = 0;
     
@@ -204,31 +204,31 @@ CCSDS_CmdSecHdr_t getCmdHeader(uint8_t _packet[]);
 // utility functions for adding telemetry to buffers
 
 template<typename T> uint8_t addIntToTlm(const T& val, uint8_t payload[], uint8_t start_pos) {
-	for(uint8_t i = 0; i < sizeof(T); i++) { // Loop through each byte
-		uint8_t shiftBits = 8 * (sizeof(T) - (i + 1)); // Number of bits to right shift
-		payload[start_pos + i] = (val >> shiftBits) & 0xFF; // Assign value
-	}
-	return start_pos + sizeof(T); // Return new array index.
+  for(uint8_t i = 0; i < sizeof(T); i++) { // Loop through each byte
+  	uint8_t shiftBits = 8 * (sizeof(T) - (i + 1)); // Number of bits to right shift
+  	payload[start_pos + i] = (val >> shiftBits) & 0xFF; // Assign value
+  }
+  return start_pos + sizeof(T); // Return new array index.
 }
 
 template<typename T> uint8_t addFloatToTlm(const T& val, uint8_t payload[], uint8_t start_pos) {
-	uint32_t tmp = 0x00000000;
-	memcpy(&tmp,&val,sizeof(T));
-	payload[start_pos] = (tmp >> 24) & 0xFF;
-    payload[start_pos+1] = (tmp >> 16) & 0xFF;
-    payload[start_pos+2] = (tmp >> 8) & 0xFF;
-    payload[start_pos+3] = (tmp >> 0) & 0xFF;
-    return start_pos + 4;
+  uint32_t tmp = 0x00000000;
+  memcpy(&tmp,&val,sizeof(T));
+  payload[start_pos] = (tmp >> 24) & 0xFF;
+  payload[start_pos+1] = (tmp >> 16) & 0xFF;
+  payload[start_pos+2] = (tmp >> 8) & 0xFF;
+  payload[start_pos+3] = (tmp >> 0) & 0xFF;
+  return start_pos + 4;
 }
 
 template<typename T> uint8_t extractFromTlm(T& extractedVal, uint8_t data[], uint8_t start_pos) {
-	uint8_t tmp[sizeof(T)];
+  uint8_t tmp[sizeof(T)];
 
-	for(uint8_t i = 0; i < sizeof(T); i++) {
-		tmp[sizeof(T) - (i + 1)] = data[start_pos + i]; // endianness...
+  for(uint8_t i = 0; i < sizeof(T); i++) {
+  	tmp[sizeof(T) - (i + 1)] = data[start_pos + i]; // endianness...
     //tmp[i] = data[start_pos + i]; // endianness...
   }
-	memcpy(&extractedVal,&tmp[0],sizeof(T));
+  memcpy(&extractedVal,&tmp[0],sizeof(T));
   return start_pos + sizeof(T);
 }
 
