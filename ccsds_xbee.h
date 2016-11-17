@@ -43,6 +43,12 @@
 #define CCSDS_CMD_PKT 1
 #define CCSDS_TLM_PKT 0
 
+#define CCSDS_SUCCESS 1
+#define CCSDS_NO_RCVD 0
+#define CCSDS_FAILURE -1
+
+#define LOG_RCVD 1
+#define LOG_SENT 0
 
 //////////////////////////////////////////////////////////////
 //                     Public Methods                       //

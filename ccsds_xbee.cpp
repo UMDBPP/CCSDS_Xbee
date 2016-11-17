@@ -13,36 +13,36 @@ int CCSDS_Xbee::init(uint16_t address, uint16_t PanID, Stream &xbee_serial, Stre
 int CCSDS_Xbee::start_logging(File logfile){
   this->_logfile = logfile;
 	this->_logfile_defined = true;
-  return 1;
+  return CCSDS_SUCCESS;
 }
 
 int CCSDS_Xbee::end_logging(){
 	this->_logfile_defined = false;
-  return 1;
+  return CCSDS_SUCCESS;
 }
 #endif
 #ifndef _NO_RTC_
 int CCSDS_Xbee::add_rtc(RTC_DS1307 rtc){
   this->_rtc = rtc;
 	this->_rtc_defined = true;
-  return 1;
+  return CCSDS_SUCCESS;
 }
 
 int CCSDS_Xbee::remove_rtc(){
 	this->_rtc_defined = false;
-  return 1;
+  return CCSDS_SUCCESS;
 }
 #endif
 
 int CCSDS_Xbee::add_debug_serial(Stream &debug_serial){
  	this->_debug_serial = &debug_serial;
 	this->_debug_serial_defined = true; 
-  return 1;
+  return CCSDS_SUCCESS;
 }
 
 int CCSDS_Xbee::remove_debug_serial(){
 	this->_debug_serial_defined = false; 
-  return 1;
+  return CCSDS_SUCCESS;
 }
 
 uint32_t CCSDS_Xbee::getSentByteCtr(){
@@ -460,7 +460,7 @@ example:
   _SentByteCtr += payload_size;
   
   // log the packet
-  logPkt(payload, payload_size, 0);
+  logPkt(payload, payload_size, LOG_RCVD);
 
 	if(_debug_serial_defined){
 		// Display data debug for the user
@@ -600,10 +600,10 @@ example:
 		sendRawData(SendAddr, pkt_buffer, pkt_size);
 
 		// return successful execution
-		return 1;
+		return CCSDS_SUCCESS;
 	}
 	else{
-		return -1;
+		return CCSDS_FAILURE;
 	}
 }
 
@@ -645,17 +645,17 @@ example:
 		sendRawData(SendAddr, pkt_buffer, pkt_size);
 
 		// return successful execution
-		return 1;
+		return CCSDS_SUCCESS;
 	}
 	else{
-		return -1;
+		return CCSDS_FAILURE;
 	}
 }
 
 int CCSDS_Xbee::readMsg(uint8_t packet_data[]){
   
   // call the version of readMsg with 0 timeout
-	return readMsg(packet_data,0);
+	return readMsg(packet_data, 0);
 }
 
 int CCSDS_Xbee::readMsg(uint8_t packet_data[], uint16_t timeout){
@@ -684,7 +684,7 @@ example:
   if(_bytesread > 0){
     
     // return the packet type
-    return (int)getPacketType(packet_data);
+    return CCSDS_SUCCESS;
   }
 	// an error occured
   else if(_bytesread < 0){
@@ -692,11 +692,11 @@ example:
 			_debug_serial->print("Error reading, errorcode: ");
 			_debug_serial->print(bytesread);
 		}
-    return -1;
+    return CCSDS_FAILURE;
   }
 	// no packet was available
 	else{
-		return 0;
+		return CCSDS_NO_RCVD;
 	}
 }
 
@@ -814,7 +814,7 @@ its effect on the rest of the program.
     if(_debug_serial_defined){
       _debug_serial->println("No packet available");   
     }    
-    return 0;
+    return CCSDS_NO_RCVD;
   }
   
   // check if we read an error
@@ -851,14 +851,14 @@ its effect on the rest of the program.
       if(_debug_serial_defined){
         _debug_serial->println(F("ACK!"));
       }
-      return 0;
+      return CCSDS_NO_RCVD;
     } 
     else{
      // the remote XBee did not receive our packet. sadface.
       if(_debug_serial_defined){
         _debug_serial->println(F("Not ACK"));
       }
-      return 0;
+      return CCSDS_NO_RCVD;
     }
   }
   else if( xbee.getResponse().getApiId() == RX_16_RESPONSE) {
@@ -879,7 +879,7 @@ its effect on the rest of the program.
 #ifndef _NO_SD_
     if(_logfile_defined){
       // log the data as received
-      logPkt(data, reponse16.getDataLength(), 1);
+      logPkt(data, reponse16.getDataLength(), LOG_RCVD);
     }
 #endif
 
@@ -894,7 +894,7 @@ its effect on the rest of the program.
     if(_debug_serial_defined){
       _debug_serial->println(F("Received something else"));
     }
-    return 0;
+    return CCSDS_NO_RCVD;
   }   
     
 }
@@ -920,10 +920,10 @@ void CCSDS_Xbee::logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t recei
 
     // prepend an indicator of if the data was received or sent
     // R indicates this was received data
-    if(received_flg){
+    if(received_flg == LOG_RCVD){
       logfile.print("R ");
     }
-    else{
+    if(received_flg == LOG_SENT){
       logfile.print("S ");
     }
     
