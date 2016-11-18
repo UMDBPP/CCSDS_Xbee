@@ -56,8 +56,6 @@ void setup(){
   }
 
   //// Init SD card
-  /* The SD card is used to store all of the log files.
-   */
   SPI.begin();
   pinMode(CHIP_SELECT_PIN,OUTPUT);
   if (!SD.begin(CHIP_SELECT_PIN)) {
@@ -85,21 +83,9 @@ void setup(){
   }
 
   /*
-   * This function will result in ccsds_xbee untilizing the rtc to get 
-   * timestamps (rather than using millis to get relative times).
+   * See example D_rtc_logging for addition info
    */
   ccsds_xbee.add_rtc(rtc);
-  /*
-   * To stop the library from using the rtc (if necessary), use the following
-   * function:
-   * 
-   * ccsds_xbee.remove_rtc()
-   * 
-   * The library will use the rtc if its been initalized, otherwise it will
-   * use millis(). Adding and removing the rtc will cause the timestamps 
-   * to change back and forth, so its generally advised to use one or the 
-   * other to make log files easier to process.
-   */
 
 }
 void loop(){
@@ -146,11 +132,8 @@ void loop(){
   else{
     Serial.println(" Message received!");
 
-    /*
-     *  In this sketch we don't process the received message, but 
-     *  it would be done the same was as demonstrated in 
-     *  simple_rcv_cmd
-     */    
+    // call a function to process the packet
+    packet_processing(Pkt_Buff);
   }
 
   // increment the cycle counter
@@ -159,4 +142,54 @@ void loop(){
   // wait a bit
   delay(1000);
   
+}
+
+
+void packet_processing(uint8_t Pkt_Buff[]){
+ /* 
+  *  Same as C_log_packetes
+  */
+  if(getAPID(Pkt_Buff) == 100 && getPacketType(Pkt_Buff) == CCSDS_CMD_PKT && validateChecksum(Pkt_Buff)){
+
+    /*
+     * The type of command is identified by the function code included in 
+     * the header. In this case we've defined 2 commands.
+     */
+    switch(getCmdFunctionCode(Pkt_Buff)){
+      case 10:{
+        /*  Command format:
+         *   CCSDS Command Header (8 bytes)
+         *   OnOff flag (1 byte) (1 if on, 0 if off)
+         */
+        Serial.println("LED_ONOFF command received");
+
+        uint8_t onoff_flag = 0;
+
+        // extract the on_off_flag from the command
+        extractFromTlm(onoff_flag, data, 8);
+
+        // turn on the LED
+        digitalWrite(LED_BUILTIN, onoff_flag);
+
+      }
+      case 11:{
+        /*  Command format:
+         *   CCSDS Command Header (8 bytes)
+         *   CycleCtr flag (2 bytes)
+         */
+        Serial.println("SetCtr command received");
+
+        // extract the cycle_ctr value from the command
+        extractFromTlm(cycle_ctr, data, 8);
+
+      }
+      default:{
+        Serial.println("Command with unrecognized function code received");
+      }
+    }
+  }
+  else{
+    Serial.println("Invalid command received");
+  }
+    
 }
