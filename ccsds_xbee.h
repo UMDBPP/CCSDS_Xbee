@@ -102,6 +102,7 @@ class CCSDS_Xbee
     uint32_t getSentPktCtr();
     uint32_t getRcvdByteCtr();
     uint32_t getRcvdPktCtr();
+    uint8_t getPrevRSSI();
     
     // counter resetters
     void resetSentByteCtr();
@@ -149,6 +150,8 @@ class CCSDS_Xbee
     uint32_t _RcvdPktCtr = 0;
     uint32_t _SentByteCtr = 0;
     uint32_t _RcvdByteCtr = 0;
+    
+    uint8_t _PrevPktRSSI = 0;
     
     void print_time(File logfile);
 #ifndef _NO_SD_

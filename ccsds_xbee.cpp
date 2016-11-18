@@ -57,6 +57,10 @@ uint32_t CCSDS_Xbee::getRcvdPktCtr(){
   return _RcvdPktCtr;
 }
 
+uint8_t CCSDS_Xbee::getPrevRSSI(){
+  return _PrevPktRSSI;
+}
+
 
 uint32_t CCSDS_Xbee::getSentPktCtr(){
   return _SentPktCtr;
@@ -876,6 +880,9 @@ its effect on the rest of the program.
     // copy data from packet into the data array starting at element 4
     memcpy(data, reponse16.getData(), reponse16.getDataLength());
 
+    // record the RSSI from this packet
+    this->_PrevPktRSSI = reponse16.getRssi();
+      
 #ifndef _NO_SD_
     if(_logfile_defined){
       // log the data as received
