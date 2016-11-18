@@ -4,27 +4,15 @@
  * Arduino Mega
  * Xbee Rx/Tx attached to Serial3 Tx/Rx
  * SD card installed
+ * RTC installed
  */
  
 /* 
- *  This sketch builds upon simple_tlm_pkt and simple_rcv_cmd to demonstrate 
- *  how to send and received packets and have them be logged to a file.
+ *  This sketch builds upon D_rtc_logging to demonstrate how to send and 
+ *  receive packets and using an RTC for logging. This sketch demonstrates
+ *  the nominal usage of the library, so the configuration #defines present
+ *  in the previous sketches are removed here.
  */
-
- 
-// configure ccsds_xbee library
-/*
- * This statement configures the CCSDS_Xbee library such that it does not 
- * attempt to load the RTC library, which the user may not have installed
- * (since its not a default library).
- */
-#define _NO_RTC_
-/*
- * This statement defines the maximum packet length the user intends to 
- * use. If the user does not define PKT_MAX_LEN CCSDS_Xbee will define
- * a default value which the user can use to initalize buffers.
- */
-#define PKT_MAX_LEN 100
 
 // Define the SD card chip select pin
 #define CHIP_SELECT_PIN 53
@@ -36,6 +24,9 @@
 
 // declare a CCSDS_Xbee object
 CCSDS_Xbee ccsds_xbee;
+
+// clear RTC objects
+RTC_DS1307 rtc;  // real time clock (for logging with timestamps)
 
 // declare a file to log to
 File xbeeLogFile;
@@ -77,33 +68,43 @@ void setup(){
   }
   
   //// Open log files
-  /* 
-   *  NOTE: The SD library requires that filenames must be 
-   *  8 or fewer characters
-   */
   xbeeLogFile = SD.open("XBEE_LOG.txt", FILE_WRITE);
   delay(10);
 
   /*
-   * To start logging call start_logging with the oepn file
-   * that you wish the log to be stored in. THE FILE MUST BE
-   * OPEN BEFORE CALLING start_logging(). The logging will cease 
-   * if the file is closed during the sketch. The library 
-   * will flush its contents to the log after each write, 
-   * the user does not need to close the file each loop.
+   * See example C_log_packets for addition info
    */
   ccsds_xbee.start_logging(xbeeLogFile);
-  /*
-   * If the user wanted to stop logging they would call 
-   * 
-   * ccsds_xbee.end_logging();
-   * xbeeLogFile.close();
-   * 
-   * the user should not close the log file until after 
-   * they've called end_logging(). This is the recommended
-   * way of turning off logging.
+
+ //// RTC  
+  /* The RTC is used so that the log files contain timestamps. If the RTC
+   *  is not running (because no battery is inserted) the RTC will be initalized
+   *  to the time that this sketch was compiled at.
    */
-  
+  if (!rtc.begin()) {
+    Serial.println("RTC NOT detected.");
+  }
+  else{
+    Serial.println("RTC detected!");
+  }
+
+  /*
+   * This function will result in ccsds_xbee untilizing the rtc to get 
+   * timestamps (rather than using millis to get relative times).
+   */
+  ccsds_xbee.add_rtc(rtc);
+  /*
+   * To stop the library from using the rtc (if necessary), use the following
+   * function:
+   * 
+   * ccsds_xbee.remove_rtc()
+   * 
+   * The library will use the rtc if its been initalized, otherwise it will
+   * use millis(). Adding and removing the rtc will cause the timestamps 
+   * to change back and forth, so its generally advised to use one or the 
+   * other to make log files easier to process.
+   */
+
 }
 void loop(){
 
@@ -123,24 +124,14 @@ void loop(){
   payload_size = addStrToTlm(sketch_name, payload_buff, payload_size);
   
  /*
-  * Now that logging is enabled the send function will automatically 
-  * record the outgoing (and incoming) messages to the log file with a
-  * timestamp.
-  * 
-  * Note, this is a different way determining if the packet sent from what
-  * was used in simple_tlm_msg. Instead of comparing the sent packet counter
-  * before/after sending the message, we can also examine the return value 
-  * of sendTlmMsg.
-  * 
+  * Same as C_log_packetes
   */ 
   if(ccsds_xbee.sendTlmMsg(0x0003, 0x00FF, payload_buff, payload_size)){
     Serial.print("Sent tlm packet,");
   }
 
  /* 
-  *  The following code is from simple_rcv_cmd. Because logging is enabled
-  *  any messages received will also be logged to the same file.
-  *  
+  *  Same as C_log_packetes
   */
   uint8_t bytes_read = 0;
   bytes_read = ccsds_xbee.readMsg(Pkt_Buff);
@@ -151,15 +142,10 @@ void loop(){
   }
   else if(bytes_read == 0){
     Serial.println(" No messages available");
+  }
   else if(bytes_read != getPacketLength(Pkt_Buff)){
-    /*
-     * We use the getPacketLength function to extract the length field
-     * of the packet header. If it doesn't match the number of bytes 
-     * we actually received, we don't process it because we can't be 
-     * sure if the packet was corrupted/truncated in transit of compiled 
-     * wrong originally.
-     */
-    Serial.println("Received partial packet!");
+     // don't process packets with incorrect lengths
+     Serial.println("Received partial packet!");
   }
   else{
     Serial.println(" Message received!");

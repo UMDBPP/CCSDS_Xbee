@@ -70,13 +70,7 @@ void loop(){
   // create a buffer in which to compile the packet
   // make it longer than necessary
   uint8_t Pkt_Buff[PKT_MAX_LEN];
-
-  // create a buffer in which to compile the payload of the packet
-  uint8_t payload_buff[100];
-	
-	// initalize a counter to keep track of the length of the payload
-	uint8_t payload_size = 0;
-	
+		
 	// initalize a counter to keep track of packet length
 	uint8_t pktLength = 0;
 
@@ -99,6 +93,16 @@ void loop(){
   }
   else if(bytes_read == 0){
     Serial.println("No messages available");
+  }
+  else if(bytes_read != getPacketLength(Pkt_Buff)){
+    /*
+     * We use the getPacketLength function to extract the length field
+     * of the packet header. If it doesn't match the number of bytes 
+     * we actually received, we don't process it because we can't be 
+     * sure if the packet was corrupted/truncated in transit of compiled 
+     * wrong originally.
+     */
+     Serial.println("Received partial packet!");
   }
   else{
     Serial.println("Message received!");
@@ -128,6 +132,13 @@ void packet_processing(uint8_t Pkt_Buff[]){
    * this payload expects an APID of 100 to contain a command. We check if
    * the packet has an APID of 100, if the packet is a command packet, and 
    * if the checksum is correct. If so we process it as a command.
+   * 
+   * In the CCSDS standard all packets contain a primary header which contain
+   * the APID and the PktType flag. By determining its a command packet, we then
+   * know that following the primary header will be a command secondary header 
+   * which includes a checksum and the FcnCode. We've defined these commands to 
+   * have no parameters, so that's all the information we need to process the 
+   * command.
    */
   if(getAPID(Pkt_Buff) == 100 && getPacketType(Pkt_Buff) == CCSDS_CMD_PKT && validateChecksum(Pkt_Buff)){
 
