@@ -151,6 +151,7 @@ void loop(){
   }
   else if(bytes_read == 0){
     Serial.println(" No messages available");
+  }
   else if(bytes_read != getPacketLength(Pkt_Buff)){
     /*
      * We use the getPacketLength function to extract the length field

@@ -933,7 +933,6 @@ void CCSDS_Xbee::logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t recei
     char buf[50];
 
     // print the data in hex
-    logfile.print(": ");
     for(int i = 0; i < len; i++){
         sprintf(buf, "%02x, ", data[i]);
         logfile.print(buf);
@@ -948,9 +947,17 @@ void CCSDS_Xbee::logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t recei
 void CCSDS_Xbee::print_time(File logfile){
 /*  print_time()
  * 
- *  Prints the current time to the given log file
+ *  Prints the current time to the given log file. Time
+ *  will always be of the format '0000, 00/00/00 00:00:00.000'
+ *  where the first value is the value of millis and the
+ *  second is the RTC value. Both values are always printed
+ *  even if the RTC is not being used (it will be zeros)
  */
-
+ 
+ // we always print the millis value
+  logfile.print(millis());
+  logfile.print(", ");
+  
 #ifndef _NO_RTC_
   if(_rtc_defined){
     // get the current time from the RTC
@@ -961,12 +968,12 @@ void CCSDS_Xbee::print_time(File logfile){
     // print a datestamp to the file
     char buf[50];
     //sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),(nowMS - start_millis)%1000);  // print milliseconds);
-    sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),millis()%1000);  // print milliseconds);
+    sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d, ", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),millis()%1000);  // print milliseconds);
     logfile.print(buf);
   }
   else{
 #endif
-    logfile.print(millis());
+    logfile.print("00/00/00 00:00:00.000, ");
 #ifndef _NO_RTC_
   }
 #endif
