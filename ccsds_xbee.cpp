@@ -952,24 +952,25 @@ void CCSDS_Xbee::print_time(File logfile){
  */
 
 #ifndef _NO_RTC_
-    if(_rtc_defined){
-      // get the current time from the RTC
-      //DateTime now = SoftRTC.now();
-      DateTime now = _rtc.now();
-      uint32_t nowMS = millis();
-  
-      // print a datestamp to the file
-      char buf[50];
-      //sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),(nowMS - start_millis)%1000);  // print milliseconds);
-      sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),millis()%1000);  // print milliseconds);
-      logfile.print(buf);
-    }
-    else{
+  if(_rtc_defined){
+    // get the current time from the RTC
+    //DateTime now = SoftRTC.now();
+    DateTime now = _rtc.now();
+    uint32_t nowMS = millis();
+
+    // print a datestamp to the file
+    char buf[50];
+    //sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),(nowMS - start_millis)%1000);  // print milliseconds);
+    sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),millis()%1000);  // print milliseconds);
+    logfile.print(buf);
+  }
+  else{
 #endif
-      logfile.print(millis());
+    logfile.print(millis());
 #ifndef _NO_RTC_
-    }
+  }
 #endif
+  logfile.flush();
 }
 
 uint16_t getAPID(uint8_t _packet[]) {

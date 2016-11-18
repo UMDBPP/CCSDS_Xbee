@@ -49,6 +49,8 @@
 
 #define LOG_RCVD 1
 #define LOG_SENT 0
+#define LOG_NONE -1
+
 
 //////////////////////////////////////////////////////////////
 //                     Public Methods                       //
