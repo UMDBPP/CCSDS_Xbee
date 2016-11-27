@@ -19,12 +19,6 @@
  * (since its not a default library).
  */
 #define _NO_RTC_
-/*
- * This statement defines the maximum packet length the user intends to 
- * use. If the user does not define PKT_MAX_LEN CCSDS_Xbee will define
- * a default value which the user can use to initalize buffers.
- */
-#define PKT_MAX_LEN 100
 
 // Define the SD card chip select pin
 #define CHIP_SELECT_PIN 53
@@ -168,7 +162,7 @@ void loop(){
     /*
      *  In this sketch we don't process the received message, but 
      *  it would be done the same was as demonstrated in 
-     *  simple_rcv_cmd
+     *  B_simple_rcv_cmd
      */    
   }
 

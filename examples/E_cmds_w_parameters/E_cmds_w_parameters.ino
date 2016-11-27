@@ -8,10 +8,9 @@
  */
  
 /* 
- *  This sketch builds upon D_rtc_logging to demonstrate how to send and 
- *  receive packets and using an RTC for logging. This sketch demonstrates
- *  the nominal usage of the library, so the configuration #defines present
- *  in the previous sketches are removed here.
+ *  This sketch builds upon D_rtc_logging, which demonstrates the nominal 
+ *  usage of the library. In this sketch we show how to receive and process 
+ *  commands which contain parameters.
  */
 
 // Define the SD card chip select pin
@@ -87,6 +86,9 @@ void setup(){
    */
   ccsds_xbee.add_rtc(rtc);
 
+  // initalize pin13 (the LED)
+  pinMode(LED_BUILTIN, OUTPUT);
+
 }
 void loop(){
 
@@ -149,97 +151,129 @@ void packet_processing(uint8_t Pkt_Buff[]){
  /* 
   *  Same as C_log_packets
   */
-  if(getAPID(Pkt_Buff) == 100 && getPacketType(Pkt_Buff) == CCSDS_CMD_PKT && validateChecksum(Pkt_Buff)){
 
-    /*
-     * The type of command is identified by the function code included in 
-     * the header. In this case we've defined 2 commands.
-     */
-    switch(getCmdFunctionCode(Pkt_Buff)){
-      case 10:{
-        /*  
-         *   FcnCode 11 is defined as a command to allow the user to turn off
-         *   and on the LED. The function is defined with the following format:
-         *   
-         *   CCSDS Command Header (8 bytes)
-         *   OnOff flag (1 byte) (1 if on, 0 if off)
-         */
-        Serial.println("LED_ONOFF command received");
+  // check the APID
+  if(getAPID(Pkt_Buff) != 100){
+    Serial.print("Invalid command received with APID  ");
+    Serial.println(getAPID(Pkt_Buff));
+    return;
+  }
 
-        uint8_t onoff_flag = 0;
+  // verify that the packet is a command
+  if(getPacketType(Pkt_Buff) != CCSDS_CMD_PKT){
+    Serial.println("Packet recieved is not a command");
+    return;
+  }
 
-        // extract the on_off_flag from the command
-        /*
-         * This demonstrates how to extract a value from a packet. This function
-         * can be used with any integer or floating point type. The parameter to be
-         * extracted is used as the first argument and that value will be modified to
-         * contain the value from the packet. The packet data is passed as the second
-         * argument, and the position of the parameter is the 3rd argument.
-         * 
-         * See the next command for another usage.
-         */
-        extractFromTlm(onoff_flag, Pkt_Buff, 8);
+  // validate command checksum
+  if(!validateChecksum(Pkt_Buff)){
+    Serial.println("Command checksum doesn't validate");
+    return;
+  }
 
+  /*
+   * The type of command is identified by the function code included in 
+   * the header. In this case we've defined 2 commands.
+   */
+  switch(getCmdFunctionCode(Pkt_Buff)){
+    case 10:{
+      /*  
+       *   FcnCode 11 is defined as a command to allow the user to turn off
+       *   and on the LED. The function is defined with the following format:
+       *   
+       *   CCSDS Command Header (8 bytes)
+       *   OnOff flag (1 byte) (1 if on, 0 if off)
+       */
+      Serial.println("LED_ONOFF command received");
+
+      uint8_t onoff_flag = 0;
+
+      // extract the on_off_flag from the command
+      /*
+       * This demonstrates how to extract a value from a packet. This function
+       * can be used with any integer or floating point type. The parameter to be
+       * extracted is used as the first argument and that value will be modified to
+       * contain the value from the packet. The packet data is passed as the second
+       * argument, and the position of the parameter is the 3rd argument.
+       * 
+       * See the next command for another usage.
+       */
+      extractFromTlm(onoff_flag, Pkt_Buff, 8);
+
+      /* 
+       *  Before using values received externally they should always be checked to
+       *  make sure they have a valid value. In this case digitalWrite takes either 
+       *  HIGH (1) or LOW (0), so we check to make sure the value we received is one
+       *  of those. If it isn't we don't call digitalWrite.
+       */
+      if(onoff_flag == 0 || onoff_flag == 1){
         // turn on the LED
         digitalWrite(LED_BUILTIN, onoff_flag);
-
+        Serial.print("Set LED to ");
+        Serial.println(onoff_flag);
       }
-      case 11:{
-        /*  
-         *   FcnCode 11 is defined as a command to allow the user to set the
-         *   cycle counter. The function is defined with the following format:
-         *   
-         *   CCSDS Command Header (8 bytes)
-         *   CycleCtr flag (2 bytes)
-         *   Param2 (1 bytes)
-         *   Param3 (4 bytes)
-         *   Param4 (4 bytes)
-         */
-        Serial.println("SetCtr command received");
+      else{
+        Serial.print("Invalid value of onoff_flag of: ");
+        Serial.println(onoff_flag);
+      }
+      break;
+    }
+    case 11:{
+      /*  
+       *   FcnCode 11 is defined as a command to allow the user to set the
+       *   cycle counter. The function is defined with the following format:
+       *   
+       *   CCSDS Command Header (8 bytes)
+       *   CycleCtr flag (2 bytes)
+       *   Param2 (1 bytes)
+       *   Param3 (4 bytes)
+       *   Param4 (4 bytes)
+       */
+      Serial.println("SetCtr command received");
 
-        // create a counter to keep track of where in the packet we are
-        /*
-         * We initalize this to 8 so that we start reading at the end of 
-         * the command header.
-         */
-        uint8_t pkt_pos = 8;
-        uint8_t Param2 = 0;
-        float Param3 = 0.0;
-        uint32_t Param4 = 0;
+      // create a counter to keep track of where in the packet we are
+      /*
+       * We initalize this to 8 so that we start reading at the end of 
+       * the command header.
+       */
+      uint8_t pkt_pos = 8;
+      uint8_t Param2 = 0;
+      float Param3 = 0.0;
+      uint32_t Param4 = 0;
         
-        /*
-         * The extractFromTlm function returns the new position of the 
-         * packet after its extracted the current parameter. 
-         */
+      /*
+       * The extractFromTlm function returns the new position of the 
+       * packet after its extracted the current parameter. 
+       */
          
-        // extract the cycle_ctr value (uint16) from the command
-        pkt_pos = extractFromTlm(cycle_ctr, Pkt_Buff, pkt_pos);
-        Serial.print("With CycleCtr: ");
-        Serial.println(cycle_ctr);
+      // extract the cycle_ctr value (uint16) from the command
+      pkt_pos = extractFromTlm(cycle_ctr, Pkt_Buff, pkt_pos);
+      Serial.print("With CycleCtr: ");
+      Serial.println(cycle_ctr);
         
-        // extract the Param2 value (uint8) from the command
-        pkt_pos = extractFromTlm(Param2, Pkt_Buff, pkt_pos);
-        Serial.print("With Param2: ");
-        Serial.println(Param2);
+      // extract the Param2 value (uint8) from the command
+      pkt_pos = extractFromTlm(Param2, Pkt_Buff, pkt_pos);
+      Serial.print("With Param2: ");
+      Serial.println(Param2);
         
-        // extract the Param3 value (float) from the command
-        pkt_pos = extractFromTlm(Param3, Pkt_Buff, pkt_pos);
-        Serial.print("With Param3: ");
-        Serial.println(Param3);
+      // extract the Param3 value (float) from the command
+      pkt_pos = extractFromTlm(Param3, Pkt_Buff, pkt_pos);
+      Serial.print("With Param3: ");
+      Serial.println(Param3);
 
-        // extract the Param4 value (uint32) from the command
-        pkt_pos = extractFromTlm(Param4, Pkt_Buff, pkt_pos);
-        Serial.print("With Param4: ");
-        Serial.println(Param4);
+      // extract the Param4 value (uint32) from the command
+      pkt_pos = extractFromTlm(Param4, Pkt_Buff, pkt_pos);
+      Serial.print("With Param4: ");
+      Serial.println(Param4);
 
-      }
-      default:{
-        Serial.println("Command with unrecognized function code received");
-      }
+      break;
+    }
+    default:{
+      Serial.print("Command with unrecognized function code: ");
+      Serial.println(getCmdFunctionCode(Pkt_Buff));
     }
   }
-  else{
-    Serial.println("Invalid command received");
-  }
+
+
     
 }

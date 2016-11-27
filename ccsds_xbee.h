@@ -103,6 +103,7 @@ class CCSDS_Xbee
     uint32_t getRcvdByteCtr();
     uint32_t getRcvdPktCtr();
     uint8_t getPrevRSSI();
+    uint8_t getPrevSenderAddr();
     
     // counter resetters
     void resetSentByteCtr();
@@ -152,6 +153,7 @@ class CCSDS_Xbee
     uint32_t _RcvdByteCtr = 0;
     
     uint8_t _PrevPktRSSI = 0;
+    uint8_t _PrevSenderAddr = 0;
     
     void print_time(File logfile);
 #ifndef _NO_SD_
@@ -197,10 +199,13 @@ uint8_t getCmdChecksum(uint8_t _packet[]);
 void setCmdChecksum(uint8_t _packet[], uint8_t checksum);
 
 uint8_t validateChecksum(uint8_t _packet[]);
+uint16_t computeChecksum(uint8_t _packet[]);
 
 CCSDS_PriHdr_t getPrimaryHeader(uint8_t _packet[]);
 CCSDS_TlmSecHdr_t getTlmHeader(uint8_t _packet[]);
 CCSDS_CmdSecHdr_t getCmdHeader(uint8_t _packet[]);
+CCSDS_TlmPkt_t getTlmPkt(uint8_t _packet[]);
+CCSDS_CmdPkt_t getCmdPkt(uint8_t _packet[]);
 
 
 //////////////////////////////////////////////////////////////

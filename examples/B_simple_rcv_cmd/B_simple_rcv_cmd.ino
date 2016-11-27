@@ -5,7 +5,21 @@
  * Xbee Rx/Tx attached to Serial3 Tx/Rx
  * 
  */
-
+/*
+ * Other configuration for this sketch:
+ * 
+ * Xbee attached to adafruit xbee breakout shield connected to XCTU
+ * To send LED On Cmd from XCTU:
+ *    In console view, load B_cmds_list_xctu
+ *    Send LED_ON frame
+ * To send LED Off Cmd from XCTU:
+ *    If not already loaded, load B_cmds_list_xctu as above
+ *    Send LED_OFF frame
+ * The other frames defined in that file can be used to test
+ * the various checks we're doing on the commands before they're
+ * processed.
+ */
+ 
 // configure ccsds_xbee library
 /*
  * This statement configures the CCSDS_Xbee library such that it does not 
@@ -13,12 +27,6 @@
  * (since its not a default library).
  */
 #define _NO_RTC_
-/*
- * This statement defines the maximum packet length the user intends to 
- * use. If the user does not define PKT_MAX_LEN CCSDS_Xbee will define
- * a default value which the user can use to initalize buffers.
- */
-#define PKT_MAX_LEN 100
 
 // include the library
 #include "ccsds_xbee.h"
@@ -45,16 +53,20 @@ void setup(){
    *   of the adafruit xbee library. 
    *   
    *   The arguments passed to init() are:
-   *   init(uint16_t MY_Addr, uint16_t PanID, Stream &xbee_serial)
+   *   init(uint16_t MY_Addr, uint16_t PanID, Stream &xbee_serial, Stream &debug_serial)
    *   
    *   MY_Addr is the address of this xbee. All xbee addresses must be 
    *   unqiue. The PanID defines the network for the xbee. All xbees must
    *   be on the same network in order to talk to eachother. The xbee_serial
    *   is the arduino Serial object that the Tx/Rx of the Xbee are connected 
    *   to. Then talking to the xbee the library will write to and read from
-   *   that serial.
+   *   that serial. 
+   *   
+   *   The fourth argument to init is optional. When used, debugging info will 
+   *   be printed to the serial object supplied in the 4th argument. For a 
+   *   normal system this would not be used.
    */
-  uint8_t initstat = ccsds_xbee.init(0x0002, 0x0B0B, Serial3);
+  uint8_t initstat = ccsds_xbee.init(0x0002, 0x0B0B, Serial3, Serial);
   if(!initstat) {
     Serial.println("XBee Initialized!");
   } else {
@@ -83,7 +95,7 @@ void loop(){
    * You may also call readMsg with a timeout by supplying an optional
    * second parameter containing the number of millis seconds to wait 
    * for a message. THIS IS A BLOCKING CALL.
-   */
+   */ 
   uint8_t bytes_read = 0;
   bytes_read = ccsds_xbee.readMsg(Pkt_Buff);
 
@@ -126,44 +138,67 @@ void loop(){
 }
 
 void packet_processing(uint8_t Pkt_Buff[]){
-  /*
+   
+   /*
    * APIDs define the type of packet, so we first check if the packet is 
-   * the type we expect. For the purposes of this example, lets say that
-   * this payload expects an APID of 100 to contain a command. We check if
-   * the packet has an APID of 100, if the packet is a command packet, and 
-   * if the checksum is correct. If so we process it as a command.
-   * 
-   * In the CCSDS standard all packets contain a primary header which contain
-   * the APID and the PktType flag. By determining its a command packet, we then
-   * know that following the primary header will be a command secondary header 
-   * which includes a checksum and the FcnCode. We've defined these commands to 
-   * have no parameters, so that's all the information we need to process the 
-   * command.
+   * the type we expect. For this example, we're expecting a command with a 
+   * APID of 100. If the APID doesn't match then we stop processing this packet.
    */
-  if(getAPID(Pkt_Buff) == 100 && getPacketType(Pkt_Buff) == CCSDS_CMD_PKT && validateChecksum(Pkt_Buff)){
+  if(getAPID(Pkt_Buff) != 100){
+    Serial.print("Invalid command received with APID  ");
+    Serial.println(getAPID(Pkt_Buff));
+    return;
+  }
+  /*
+   * We then check to ensure that the packet we received is designated as a command.
+   * Each APID should correspond to a type of packet... in this case we've defined 
+   * APID 100 to be a command, so we'll double check that it actually is to make sure
+   * the next check won't do something unexpected. If the packet isn't a command like
+   * we expect it to be then we stop processing this packet.
+   */
+  if(getPacketType(Pkt_Buff) != CCSDS_CMD_PKT){
+    Serial.println("Packet recieved is not a command");
+    return;
+  }
+  /*
+   * Now that we've confirmed that the packet we received is a command, we know that
+   * the primary header (which contains the APID and PktType flags we just checked) is
+   * followed by a secondary command header, which contains a function code and a checksum.
+   * The checksum of these packets is a hash generated from the contents of the packet. We
+   * use it to verify that the data we received is what the sender intended. The function we're 
+   * using here will extract the checksum included in the message, calculate our own checksum for
+   * the data we received, and return true it matches the checksum sent with the packet or false
+   * otherwise. If the packet's checksum doesn't validate then we stop processing this packet.
+   */
+  if(!validateChecksum(Pkt_Buff)){
+    Serial.println("Command checksum doesn't validate");
+    return;
+  }
 
-    /*
-     * The type of command is identified by the function code included in 
-     * the header. In this case we've defined 2 commands.
-     */
-    switch(getCmdFunctionCode(Pkt_Buff)){
-      case 1:{
-        Serial.println("LED_ON command received");
-        // turn on the LED
-        digitalWrite(LED_BUILTIN, HIGH);
-      }
-      case 2:{
-        Serial.println("LED_OFF command received");
-        // turn off the LED
-        digitalWrite(LED_BUILTIN, LOW);  
-      }
-      default:{
-        Serial.println("Command with unrecognized function code received");
-      }
+  /*
+   * Now we can get to processing the actual content of the command. In this case, we've defined
+   * 2 commands, one to turn the Arduino's LED on and another to turn it off. The commands are 
+   * differentiated by their FcnCode, 1 for LED_ON and 2 for LED_OFF. Here, since the response
+   * to the command is simple, we implement them in the logic, but more complicated functionality
+   * could be broken out into functions.
+   */
+  switch(getCmdFunctionCode(Pkt_Buff)){
+    case 1:{
+      Serial.println("LED_ON command received");
+      // turn on the LED
+      digitalWrite(LED_BUILTIN, HIGH);
+      break;
+    }
+    case 2:{
+      Serial.println("LED_OFF command received");
+      // turn off the LED
+      digitalWrite(LED_BUILTIN, LOW);  
+      break;
+    }
+    default:{
+      Serial.print("Command with unrecognized function code: ");
+      Serial.println(getCmdFunctionCode(Pkt_Buff));
     }
   }
-  else{
-    Serial.println("Invalid command received");
-  }
-    
+  
 }

@@ -464,7 +464,7 @@ example:
   _SentByteCtr += payload_size;
   
   // log the packet
-  logPkt(payload, payload_size, LOG_RCVD);
+  logPkt(payload, payload_size, LOG_SENT);
 
 	if(_debug_serial_defined){
 		// Display data debug for the user
@@ -497,7 +497,7 @@ int CCSDS_Xbee::createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload
 	// fill primary header fields
 	setAPID(pkt_buf, _APID);
 	setSecHdrFlg(pkt_buf, 1);
-	setPacketType(pkt_buf, 0);
+	setPacketType(pkt_buf, CCSDS_TLM_PKT);
 	setVer(pkt_buf, 0);
 	setSeqCtr(pkt_buf, _SentPktCtr);
 	setSeqFlg(pkt_buf, 0x03);
@@ -530,7 +530,12 @@ int CCSDS_Xbee::createTlmMsg(uint8_t pkt_buf[], uint16_t _APID, uint8_t _payload
 
 int CCSDS_Xbee::createCmdMsg(uint8_t pkt_buf[], uint16_t APID, uint8_t FcnCode, uint8_t payload[], uint16_t payload_size){
 	// if the user attempts to send a packet that's too long, return failure
-	if(payload_size + sizeof(CCSDS_TlmPkt_t) > PKT_MAX_LEN){
+  
+  // update the payload_size to include the headers
+	payload_size += sizeof(CCSDS_CmdPkt_t);
+  
+  // make sure the packet won't be too long
+	if(payload_size > PKT_MAX_LEN){
 		if(_debug_serial_defined){
 			Serial.println("Packet too long... not sending");
 		}
@@ -539,31 +544,25 @@ int CCSDS_Xbee::createCmdMsg(uint8_t pkt_buf[], uint16_t APID, uint8_t FcnCode, 
 		return -1;
 	}
 
-  // clear the buffer
-	//memset(pkt_buf, 0x00, pkt_buf+sizeof(CCSDS_TlmPkt_t));
-
 	// fill primary header fields
 	setAPID(pkt_buf, APID);
 	setSecHdrFlg(pkt_buf, 1);
-	setPacketType(pkt_buf, 0);
+	setPacketType(pkt_buf, CCSDS_CMD_PKT);
 	setVer(pkt_buf, 0);
 	setSeqCtr(pkt_buf, _SentPktCtr);
 	setSeqFlg(pkt_buf, 0x03);
-	setPacketLength(pkt_buf, payload_size+sizeof(CCSDS_TlmPkt_t));
+	setPacketLength(pkt_buf, payload_size);
 
 	// fill secondary header fields
 	setCmdChecksum(pkt_buf, 0x0);
 	setCmdFunctionCode(pkt_buf, FcnCode);
 
+  // copy the packet data
+	memcpy(pkt_buf+sizeof(CCSDS_CmdPkt_t), payload, payload_size);
+  
 	// write the checksum after the header's been added
 	setCmdChecksum(pkt_buf, CCSDS_ComputeCheckSum((CCSDS_CmdPkt_t*) pkt_buf));
-  
-	// copy the packet data
-	memcpy(pkt_buf+sizeof(CCSDS_TlmPkt_t), payload, payload_size);
-
-	// update the payload_size to include the headers
-	payload_size += sizeof(CCSDS_TlmPkt_t);
-	
+ 
 	return payload_size;
 }
 
@@ -682,26 +681,8 @@ example:
 */
 
   // read a message from the xbee
-  uint16_t bytesread = _readXbeeMsg(packet_data, timeout);
+  return _readXbeeMsg(packet_data, timeout);
         
-  // we got a packet
-  if(_bytesread > 0){
-    
-    // return the packet type
-    return CCSDS_SUCCESS;
-  }
-	// an error occured
-  else if(_bytesread < 0){
-		if(_debug_serial_defined){
-			_debug_serial->print("Error reading, errorcode: ");
-			_debug_serial->print(bytesread);
-		}
-    return CCSDS_FAILURE;
-  }
-	// no packet was available
-	else{
-		return CCSDS_NO_RCVD;
-	}
 }
 
 
@@ -809,7 +790,7 @@ its effect on the rest of the program.
 	}
   
   // check if a message was available
-  if (xbee.getResponse().isAvailable()){
+  if (!xbee.getResponse().isAvailable()){
     /*
     This typically means there was no packet to read, thogh can also mean
     that the xbee is hooked up correctly (though that should've been detected
@@ -882,6 +863,7 @@ its effect on the rest of the program.
 
     // record the RSSI from this packet
     this->_PrevPktRSSI = reponse16.getRssi();
+    this->_PrevSenderAddr = reponse16.getRemoteAddress16();
       
 #ifndef _NO_SD_
     if(_logfile_defined){
@@ -923,7 +905,7 @@ void CCSDS_Xbee::logPkt(File logfile, uint8_t data[], uint8_t len, uint8_t recei
  */
 
   // if the file is open
-  if (logfile) {
+  if (_logfile_defined && logfile) {
 
     // prepend an indicator of if the data was received or sent
     // R indicates this was received data
@@ -1136,10 +1118,22 @@ CCSDS_TlmSecHdr_t getTlmHeader(uint8_t _packet[]) {
 }
 
 CCSDS_CmdSecHdr_t getCmdHeader(uint8_t _packet[]) {
-	return *(CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t)-1);
+	return *(CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
 }
 
+CCSDS_TlmPkt_t getTlmPkt(uint8_t _packet[]) {
+	return *(CCSDS_TlmPkt_t*)(_packet);
+}
 
+CCSDS_CmdPkt_t getCmdPkt(uint8_t _packet[]) {
+	return *(CCSDS_CmdPkt_t*)(_packet);
+}
+// FIXME: Doesnt work correctly
+/*
+uint16_t computeChecksum(uint8_t _packet[]) {
+	return CCSDS_ComputeCheckSum(*(getCmdPkt(_packet)));
+}
+*/
 uint8_t addStrToTlm(char *s, uint8_t payload[], uint8_t start_pos){
 
 	memcpy(payload+start_pos,s,strlen(s));
