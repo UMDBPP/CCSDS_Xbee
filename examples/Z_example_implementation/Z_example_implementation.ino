@@ -192,9 +192,23 @@ File PWRLogFile;
 File xbeeLogFile;
 File initLogFile;
 
-
 //// Function prototypes
-void command_response(uint8_t CmdData[], uint8_t data_len, struct IMUData_s IMUData, struct ENVData_s ENVData, struct PWRData_s PWRData);
+
+// init functions
+void openLogFiles();
+void initalizeRTCandReturnStatus(struct InitStat_s *InitStat);
+void initalizeSDandReturnStatus(struct InitStat_s *InitStat);
+void initalizeXbeeAndReturnStatus(struct InitStat_s *InitStat);
+void initalizeBNOandReturnStatus(struct InitStat_s *InitStat);
+void initalizeMCPandReturnStatus(struct InitStat_s *InitStat);
+void initalizeBMEandReturnStatus(struct InitStat_s *InitStat);
+void initalizeSSCandReturnStatus(struct InitStat_s *InitStat);
+void initalizeADSandReturnStatus(struct InitStat_s *InitStat);
+
+// data handling
+void respondToData(uint8_t data[], uint8_t data_len, struct IMUData_s IMUData, struct ENVData_s ENVData, struct PWRData_s PWRData);
+void respondToCommand(uint8_t cmdData[], uint8_t cmdData_len, struct IMUData_s IMUData, struct ENVData_s ENVData, struct PWRData_s PWRData);
+void respondToTelemetry(uint8_t data[], uint8_t data_len);
 
 // pkt creation
 uint16_t create_HK_payload(uint8_t Pkt_Buff[]);
@@ -205,19 +219,37 @@ uint16_t create_INIT_payload(uint8_t Pkt_Buff[], struct InitStat_s InitStat);
 uint16_t create_FileInfo_payload(uint8_t Pkt_Buff[], uint8_t file_idx);
 uint16_t create_FilePart_payload(uint8_t Payload_Buff[], uint8_t file_idx, uint32_t start_pos, uint32_t end_pos);
 
+// execute command
+void executeReqHKCommand(uint8_t CmdData[]);
+void executeNoOpCommand(uint8_t CmdData[]);
+void executeResetCtrCommand(uint8_t CmdData[]);
+void executeReqENVCommand(uint8_t CmdData[], struct ENVData_s ENVData);
+void executeReqPWRCommand(uint8_t CmdData[], struct PWRData_s PWRData);
+void executeReqIMUCommand(uint8_t CmdData[], struct IMUData_s IMUData);
+void executeReqInitCommand(uint8_t CmdData[], struct InitStat_s InitData);
+void executeSetTimeCommand(uint8_t CmdData[]);
+void executeReqTimeCommand(uint8_t CmdData[]);
+void executeReqFileInfoCommand(uint8_t CmdData[]);
+void executeReqFilePartCommand(uint8_t CmdData[]);
+void executeRebootCommand(uint8_t CmdData[]);
+
 // sensor reading
-void read_imu(struct IMUData_s *IMUData);
-void read_pwr(struct PWRData_s *PWRData);
-void read_env(struct ENVData_s *ENVData);
+void readImuSensorsIntoStruct(struct IMUData_s *IMUData);
+void readPwrSensorsIntoStruct(struct PWRData_s *PWRData);
+void readEnvSensorsIntoStruct(struct ENVData_s *ENVData);
 
 // log data
-void log_imu(struct IMUData_s IMUData, File IMULogFile);
-void log_env(struct ENVData_s ENVData, File ENVLogFile);
-void log_pwr(struct PWRData_s PWRData, File PWRLogFile);
+void writeImuLogEntry(struct IMUData_s IMUData, File IMULogFile);
+void writeEnvLogEntry(struct ENVData_s ENVData, File ENVLogFile);
+void writePwrLogEntry(struct PWRData_s PWRData, File PWRLogFile);
+void writeInitLogEntry(File initLogFile, struct InitStat_s InitStat);
 
 // utility
 void print_time(File file);
-
+bool isTimeToReadImu(uint16_t imu_read_ctr);
+bool isTimeToReadPwr(uint16_t pwr_read_ctr);
+bool isTimeToReadEnv(uint16_t env_read_ctr);
+bool isPacketCorrectLength(int BytesRead, uint8_t ReadData[]);
 
 void setup() {
   /* setup()
@@ -245,155 +277,35 @@ void setup() {
   debug_serial.begin(250000);
   xbee_serial.begin(9600);
 
-  debug_serial.println("Begin Init!");
-
-  //// RTC  
-  /* The RTC is used so that the log files contain timestamps. If the RTC
-   *  is not running (because no battery is inserted) the RTC will be initalized
-   *  to the time that this sketch was compiled at.
-   */
-  InitStat.rtc_start = rtc.begin();
-  if (!InitStat.rtc_start) {
-    Serial.println("RTC NOT detected.");
-  }
-  else{
-    Serial.println("RTC detected!");
-    InitStat.rtc_running = rtc.isrunning();
-  }
+  debug_serial.println(F("Begin Init!"));
+ 
+  initalizeRTCandReturnStatus(&InitStat);
 
   //// SoftRTC (for subsecond precision)
   SoftRTC.begin(rtc.now());  // Initialize SoftRTC to the current time
   start_millis = millis();  // get the current millisecond count
 
-  //// Init SD card
-  /* The SD card is used to store all of the log files.
-   */
-  SPI.begin();
-  pinMode(53,OUTPUT);
-  InitStat.SD_detected = SD.begin(53);
-  if (!InitStat.SD_detected) {
-    debug_serial.println("SD Card NOT detected.");
-  }
-  else{
-    debug_serial.println("SD Card detected!");
-  }
+  initalizeSDandReturnStatus(&InitStat);
   
-  //// Open log files
-  // NOTE: Filenames must be shorter than 8 characters
-   
-  xbeeLogFile = SD.open("XBEE_LOG.txt", FILE_WRITE);
-  delay(10);
+  openLogFiles();
+
+  initalizeXbeeAndReturnStatus(&InitStat);
   
-  // for data files, write a header
-  initLogFile = SD.open("INIT_LOG.txt", FILE_WRITE);
-  initLogFile.println("DateTime,RTCStart,RTCRun,BNO,BME,MCP,SSC,Xbee");
-  initLogFile.flush(); 
-  delay(10);
-  IMULogFile = SD.open("IMU_LOG.txt", FILE_WRITE);
-  IMULogFile.println("DateTime,SystemCal[0-3],AccelCal[0-3],GyroCal[0-3],MagCal[0-3],AccelX[m/s^2],AccelY[m/s^2],AccelZ[m/s^2],GyroX[rad/s],GyroY[rad/s],GyroZ[rad/s],MagX[uT],MagY[uT],MagZ[uT]");
-  IMULogFile.flush();  
-  delay(10);
-  PWRLogFile = SD.open("PWR_LOG.txt", FILE_WRITE);
-  PWRLogFile.println("DateTime,BatteryVoltage[V],CurrentConsumption[A]");
-  PWRLogFile.flush();
-  delay(10);
-  ENVLogFile = SD.open("ENV_LOG.txt", FILE_WRITE);
-  ENVLogFile.println("DateTime,BMEPressure[hPa],BMETemp[degC],BMEHumidity[%],SSCPressure[PSI],SSCTemp[degC],BNOTemp[degC],MCPTemp[degC]");
-  ENVLogFile.flush();
-  delay(10);  
+  initalizeBNOandReturnStatus(&InitStat);
+
+  initalizeMCPandReturnStatus(&InitStat);
+
+  initalizeBMEandReturnStatus(&InitStat);
   
-  //// Init Xbee
-  /* InitXbee() will configure the attached xbee so that it can talk to
-   *   xbees which also use this library. It also handles the initalization
-   *   of the adafruit xbee library
-   */
-  InitStat.xbeeStatus = ccsds_xbee.init(XBee_MY_Addr, XBee_PAN_ID, xbee_serial);
-  if(!InitStat.xbeeStatus) {
-    debug_serial.println(F("XBee Initialized!"));
-  } else {
-    debug_serial.print(F("XBee Failed to Initialize with Error Code: "));
-    debug_serial.println(InitStat.xbeeStatus);
-  }
-
-  ccsds_xbee.add_rtc(rtc);
-  ccsds_xbee.start_logging(xbeeLogFile);
+  initalizeSSCandReturnStatus(&InitStat);
   
-  //// BNO
-  InitStat.BNO_init = bno.begin();
-  if(!InitStat.BNO_init){
-    debug_serial.println("BNO055 NOT detected.");
-  }
-  else{
-    debug_serial.println("BNO055 detected!");
-  }
-  delay(500);
-  bno.setExtCrystalUse(true);
-
-  //// MCP9808
-  InitStat.MCP_init = tempsensor.begin(0x18);
-  if (!InitStat.MCP_init) {
-    debug_serial.println("MCP9808 NOT detected.");
-  }
-  else{
-    debug_serial.println("MCP9808 detected!");
-  }
-
-  //// Init BME
-  // Temp/pressure/humidity sensor
-  InitStat.BME_init = bme.begin(0x76);
-  if (!InitStat.BME_init) {
-    debug_serial.println("BME280 NOT detected.");
-  }
-  else{
-    debug_serial.println("BME280 detected!");
-  }
-
-  //// Init SSC
-  //  set min / max reading and pressure, see datasheet for the values for your 
-  //  sensor
-  ssc.setMinRaw(0);
-  ssc.setMaxRaw(16383);
-  ssc.setMinPressure(0.0);
-  ssc.setMaxPressure(30);
-  //  start the sensor
-  InitStat.SSC_init = ssc.start();
-  if(!InitStat.SSC_init){
-    debug_serial.println("SSC started ");
-  }
-  else{
-    debug_serial.println("SSC failed!");
-  }
-
-  //// Init ADS
-  // ADC, used for current consumption/battery voltage
-  ads.begin();
-  ads.setGain(GAIN_ONE);
-  debug_serial.println("Initialized ADS1015");
+  initalizeADSandReturnStatus(&InitStat);
 
   //// set interface counters to zero
   CmdExeCtr = 0;
   CmdRejCtr = 0;
   
-  // write entry in init log file
-  print_time(initLogFile);
-  initLogFile.print(", ");
-  initLogFile.print(InitStat.rtc_start);
-  initLogFile.print(", ");
-  initLogFile.print(InitStat.rtc_running);
-  initLogFile.print(", ");
-  initLogFile.print(InitStat.BNO_init);
-  initLogFile.print(", ");
-  initLogFile.print(InitStat.BME_init);
-  initLogFile.print(", ");
-  initLogFile.print(InitStat.MCP_init);
-  initLogFile.print(", ");
-  initLogFile.print(InitStat.SSC_init);
-  initLogFile.print(", ");
-  initLogFile.print(InitStat.xbeeStatus);
-  initLogFile.print(", ");
-  initLogFile.print(InitStat.SD_detected);
-  initLogFile.println();
-  initLogFile.close();
+  writeInitLogEntry(initLogFile, InitStat);
 
   debug_serial.println(F("Initialized!"));
   
@@ -423,19 +335,19 @@ void loop() {
   env_read_ctr++;
 
   // read sensors if number of cycles since last read has elapsed
-  if(imu_read_ctr > imu_read_lim){
-    read_imu(&IMUData);
-    log_imu(IMUData, IMULogFile);
+  if(isTimeToReadImu(imu_read_ctr)){
+    readImuSensorsIntoStruct(&IMUData);
+    writeImuLogEntry(IMUData, IMULogFile);
     imu_read_ctr = 0;
   }
-  if(pwr_read_ctr > pwr_read_lim){
-    read_pwr(&PWRData);
-    log_pwr(PWRData, PWRLogFile);
+  if(isTimeToReadPwr(pwr_read_ctr)){
+    readPwrSensorsIntoStruct(&PWRData);
+    writePwrLogEntry(PWRData, PWRLogFile);
     pwr_read_ctr = 0;
   }
-  if(env_read_ctr > env_read_lim){
-    read_env(&ENVData);
-    log_env(ENVData, ENVLogFile);
+  if(isTimeToReadEnv(env_read_ctr)){
+    readEnvSensorsIntoStruct(&ENVData);
+    writeEnvLogEntry(ENVData, ENVLogFile);
     env_read_ctr = 0;
   }  
 
@@ -452,20 +364,20 @@ void loop() {
   // if data was read, process it as a CCSDS packet
   if(BytesRead > 0){
     
-    // if the length of the packet received doesn't match the length 
-    // the packet says that it is, don't process it
-    if(BytesRead != getPacketLength(ReadData)){
-      Serial.print("Received packet with expected length");
+    if(isPacketCorrectLength(BytesRead, ReadData)){
+      
+      Serial.print(F("Received packet with expected length"));
       Serial.print(getPacketLength(ReadData));
-      Serial.print(" but actual length ");
+      Serial.print(F(" but actual length "));
       Serial.print(BytesRead);
+      
       // indicate that we rejected a command
       CmdRejCtr++;
     }
     else{
 
       // respond to the data
-      command_response(ReadData, BytesRead, IMUData, ENVData, PWRData);
+      respondToData(ReadData, BytesRead, IMUData, ENVData, PWRData);
     }
   }
   
@@ -483,39 +395,72 @@ void loop() {
   delay(10);
 }
 
-void command_response(uint8_t CmdData[], uint8_t data_len, struct IMUData_s IMUData, struct ENVData_s ENVData, struct PWRData_s PWRData) {
-  /*  command_response()
-   * 
-   *  given an array of data (presumably containing a CCSDS packet), check if: 
-   *    the APID is the payload command packet APID
-   *    the packet is a command packet
-   *    the checksum in the header is correct
-   *  if so, process it
-   *  otherwise, reject it
-   */
+void writeInitLogEntry(File initLogFile, struct InitStat_s InitStat){
+  
+  print_time(initLogFile);
+  
+  initLogFile.print(", ");
+  initLogFile.print(InitStat.rtc_start);
+  initLogFile.print(", ");
+  initLogFile.print(InitStat.rtc_running);
+  initLogFile.print(", ");
+  initLogFile.print(InitStat.BNO_init);
+  initLogFile.print(", ");
+  initLogFile.print(InitStat.BME_init);
+  initLogFile.print(", ");
+  initLogFile.print(InitStat.MCP_init);
+  initLogFile.print(", ");
+  initLogFile.print(InitStat.SSC_init);
+  initLogFile.print(", ");
+  initLogFile.print(InitStat.xbeeStatus);
+  initLogFile.print(", ");
+  initLogFile.print(InitStat.SD_detected);
+  initLogFile.println();
+  initLogFile.close();
+  
+}
 
-  // get the APID (the field which identifies the type of packet)
-  uint16_t _APID = getAPID(CmdData);
-
+bool isTimeToReadImu(uint16_t imu_read_ctr){
+  
   /*
-   * The following checks that the packet we received is a command 
-   * for this payload to process.
-   */ 
-  if(_APID != CMD_APID){
-    debug_serial.print("Unrecognized apid 0x");
-    debug_serial.println(_APID, HEX);
-    CmdRejCtr++;
-    return;
-  }
+   * There are several ways to decide when to read the IMU...
+   * Either time-based sampling or cycle based cycling could 
+   * be used. This function currently implements cycle-based
+   * sampling but could be changed to trigger at a periodic 
+   * time.
+   */
+  return imu_read_ctr > imu_read_lim;
+}
+
+bool isTimeToReadPwr(uint16_t pwr_read_ctr){
+  return pwr_read_ctr > pwr_read_lim;
+}
+
+bool isTimeToReadEnv(uint16_t env_read_ctr){
+  return env_read_ctr > env_read_lim;
+}
+
+bool isValidCommandHeader(uint8_t data[]){
+  // get the APID (the field which identifies the type of packet)
+  uint16_t APID = getAPID(data);
   
   /*
    * The following check confirms that the packet we received is
    * designated as a command packet.
    */ 
-  if(!getPacketType(CmdData)){
-    debug_serial.print("Not a command packet");
-    CmdRejCtr++;
-    return;
+  if(!getPacketType(data)){
+    debug_serial.print(F("Not a command packet"));
+    return false;
+  }
+  
+  /*
+   * The following checks that the packet we received is a command 
+   * for this payload to process.
+   */ 
+  if(APID != CMD_APID){
+    debug_serial.print(F("Unrecognized apid 0x"));
+    debug_serial.println(APID, HEX);
+    return false;
   }
   
   /*
@@ -524,11 +469,69 @@ void command_response(uint8_t CmdData[], uint8_t data_len, struct IMUData_s IMUD
    * then we don't process the command because we can't be sure 
    * what parts of the messages might've been corrupted.
    */ 
-  if(!validateChecksum(CmdData)){
-    Serial.println("Command checksum doesn't validate");
+  // validate command checksum
+  if(!packetHasValidChecksum(data)){
+    debug_serial.println(F("Command checksum doesn't validate"));
     CmdRejCtr++;
-    return;
+    return false;
   }
+  
+  return true;
+}
+
+bool isValidTelemetryHeader(uint8_t data[]){
+ 
+  /*
+   * The following check confirms that the packet we received is
+   * designated as a telemetry packet.
+   */ 
+  if(getPacketType(data)){
+    debug_serial.print(F("Not a telemetry packet"));
+    return false;
+  }
+    
+  return true;
+}
+
+void respondToData(uint8_t data[], uint8_t data_len, struct IMUData_s IMUData, struct ENVData_s ENVData, struct PWRData_s PWRData){
+  
+  if(isValidCommandHeader(data)){
+    respondToCommand(data, data_len, IMUData, ENVData, PWRData);
+  }
+  
+  if(isValidTelemetryHeader(data)){
+    respondToTelemetry(data, data_len);
+  }
+}
+
+void respondToTelemetry(uint8_t TlmData[], uint8_t data_len){
+  
+  // process each packet depending on what type of packet it is
+  switch(getAPID(TlmData)){
+
+    /* 
+     * This code currently doesn't use any telemetry data it receives, so there 
+     * are no packets processed by default. Examples of how it could be used include:
+     *   - Setting payload time after sending a request for Link's flight time
+     *   - Verifying that Link forwarded a message to the ground by examining
+     *       Link's interface counters in HK telemetry, otherwise, resend 
+     *   - Requesting a telemetry point from another payload (ex: request current
+     *       flight position from another payload which is flying a GPS)
+     *
+     * In order to use a received packet, add a case to the switch statement to 
+     * properly process the packet with the APID.
+     */
+     
+    // unrecognized APID
+    default:
+    {
+      debug_serial.print("Unrecognized telemetry packet with APID: 0x");
+      debug_serial.println(getAPID(TlmData), HEX);
+    }
+  } // end switch(APID)
+}
+
+void respondToCommand(uint8_t CmdData[], uint8_t cmdData_len, struct IMUData_s IMUData, struct ENVData_s ENVData, struct PWRData_s PWRData) {
     
   /*
    * The function code determines what type of command it is and 
@@ -539,531 +542,85 @@ void command_response(uint8_t CmdData[], uint8_t data_len, struct IMUData_s IMUD
     // NoOp Cmd
     case NOOP_FCNCODE:
     {
-      /*
-       * This command requires no action other than to increment 
-       * the command executed counter to indicate that it was received. 
-       * This command is used to confirm communication with the payload
-       * without causing any further action. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       * There are no parameters associated with this command.
-       */ 
-      debug_serial.println("Received NoOp Cmd");
 
-      // increment the cmd executed counter
-      CmdExeCtr++;
+      executeNoOpCommand(CmdData);
       break;
     }
     // REQ_HK Cmd
     case REQHK_FCNCODE:
     {
-      /* 
-       * This command requests that a packet containing the payload's
-       * interface information be sent to a specific xbee. The format of 
-       * the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Xbee address (uint8_t)
-       * There is one parameter associated with this command, the address
-       * of the xbee to send the HK message to. The format of the HK message
-       * which is sent out is:
-       *   CCSDS Telemetry Header (12 bytes)
-       *   Command Execution Counter (uint16_t)
-       *   Command Rejection Counter (uint16_t)
-       *   Received Bytes Counter (uint32_t)
-       *   Sent Bytes Counter (uint32_t)
-       *   Payload RunTime (uint32_t)
-       */ 
-      debug_serial.print("Received HKReq Cmd to addr ");
-
-      // define variables to process the command
-      uint8_t HKdestAddr = 0;
-      uint16_t pktLength = 0;
-      uint8_t payloadLength = 0;
       
-      // define buffers to create the response in
-      uint8_t HK_Payload_Buff[PKT_MAX_LEN];
-      uint8_t HK_Pkt_Buff[PKT_MAX_LEN];
-      
-      // extract the desintation address from the command
-      extractFromTlm(HKdestAddr, CmdData, 8);
-      debug_serial.println(HKdestAddr);
-      
-      // add the information to the buffer
-      payloadLength = create_HK_payload(HK_Payload_Buff);
-
-      // create the telemetry message by adding the buffer to the header
-      pktLength = ccsds_xbee.createTlmMsg(HK_Pkt_Buff, HK_APID, HK_Payload_Buff, payloadLength);
-      
-      if(pktLength > 0){
-        // send the data
-        ccsds_xbee.sendRawData(HKdestAddr, HK_Pkt_Buff, pktLength); 
-      }
-
-      // increment the cmd executed counter
-      CmdExeCtr++;
+      executeReqHKCommand(CmdData);
       break;
     } 
     // ResetCtr
     case RESETCTR_FCNCODE:
     {
-      /* 
-       * This command requests that all of the payload's interface counters
-       * be reset to zero. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       * There are no parameters associated with this command. 
-       */ 
-      debug_serial.println("Received ResetCtr Cmd");
-
-      // reset all counters to zero
-      CmdExeCtr = 0;
-      CmdRejCtr = 0;
-      ccsds_xbee.resetCounters();
-
-      // increment the cmd executed counter
-      CmdExeCtr++;
+      
+      executeResetCtrCommand(CmdData);
       break;
     }
     // ENV_Req
     case REQENV_FCNCODE:
     {
-      /* 
-       * This command requests that the environmental status of the payload be
-       * sent to a specific xbee. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Xbee address (uint8_t)
-       * There is one parameter associated with this command, the address
-       * of the xbee to send the ENV message to. The format of the ENV message
-       * which is sent out is:
-       *   CCSDS Telemetry Header (12 bytes)
-       *   BME pressure (float)
-       *   BME temperature (float)
-       *   BME humidity (float)
-       *   SSC pressure (float)
-       *   SSC temperature (float)
-       *   BNO temperature (float)
-       *   MCP temperature (float)
-       */ 
-      debug_serial.print("Received ENV_Req Cmd to addr: ");
-
-      // define variables to process the command
-      uint16_t EnvDestAddr = 0;
-      uint16_t payloadLength = 0;
-      int success_flg = 0;
       
-      // define buffers to create the response in
-      uint8_t ENV_Payload_Buff[PKT_MAX_LEN];
-      uint8_t ENV_Pkt_Buff[PKT_MAX_LEN];
-      
-      // extract the desired xbee address from the packet
-      extractFromTlm(EnvDestAddr, CmdData, 8);
-      debug_serial.println(EnvDestAddr);
-
-      // add the information to the buffer
-      payloadLength = create_ENV_payload(ENV_Payload_Buff, ENVData);
-
-      // send the telemetry message by adding the buffer to the header
-      success_flg = ccsds_xbee.sendTlmMsg(EnvDestAddr, ENV_APID, ENV_Payload_Buff, payloadLength);
-      
-      if(success_flg > 0){
-        // increment the cmd executed counter
-        CmdExeCtr++;
-      }
-      else{
-        CmdRejCtr++;
-      }
-      
+      executeReqENVCommand(CmdData, ENVData);
       break;
     }
     // PWR_Req
     case REQPWR_FCNCODE:
     {
-      /* 
-       * This command requests that the power status of the payload be
-       * sent to a specific xbee. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Xbee address (1 byte)
-       * There is one parameter associated with this command, the address
-       * of the xbee to send the PWR message to. The format of the PWR message
-       * which is sent out is:
-       *   CCSDS Telemetry Header (12 bytes)
-       *   Battery Voltage (float)
-       *   Current consumption (float)
-       */ 
-      debug_serial.print("Received PWR_Req Cmd to addr: ");
-
-      // define variables to process the command
-      uint8_t PwrDestAddr = 0;
-      uint8_t payloadLength = 0;
-      int success_flg = 0;
       
-      // define buffers to create the response in
-      uint8_t PWR_Payload_Buff[PKT_MAX_LEN];
-      uint8_t PWR_Pkt_Buff[PKT_MAX_LEN];
-      
-      // extract the desired xbee address from the packet
-      extractFromTlm(PwrDestAddr, CmdData, 8);
-      debug_serial.println(PwrDestAddr);
-      
-      // add the information to the buffer
-      payloadLength = create_PWR_payload(PWR_Payload_Buff, PWRData);
-      
-      // send the telemetry message by adding the buffer to the header
-      success_flg = ccsds_xbee.sendTlmMsg(PwrDestAddr, PWR_APID, PWR_Pkt_Buff, payloadLength);
-      
-      if(success_flg > 0){
-        // increment the cmd executed counter
-        CmdExeCtr++;
-      }
-      else{
-        CmdRejCtr++;
-      }
-
+      executeReqPWRCommand(CmdData, PWRData);
       break;
     }
     // IMU_Req
     case REQIMU_FCNCODE:
     {
-      /* 
-       * This command requests that the IMU status of the payload be
-       * sent to a specific xbee. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Xbee address (1 byte)
-       * There is one parameter associated with this command, the address
-       * of the xbee to send the IMU message to. The format of the IMU message
-       * which is sent out is:
-       *   CCSDS Telemetry Header (12 bytes)
-       *   System Calibration (uint8_t)
-       *   Accelerometer Calibration (uint8_t)
-       *   Gyro Calibration (uint8_t)
-       *   Magnetometer Calibration (uint8_t)
-       *   Accelerometer X (float)
-       *   Accelerometer Y (float)
-       *   Accelerometer Z (float)
-       *   Gyro X (float)
-       *   Gyro Y(float)
-       *   Gyro Z (float)
-       *   Magnetometer X (float)
-       *   Magnetometer Y (float)
-       *   Magnetometer Z (float)
-       */ 
-      debug_serial.print("Received REQ_IMU Cmd to addr:");
-
-      // define variables to process the command
-      uint8_t ImuDestAddr = 0;
-      uint8_t payloadLength = 0;
-      int success_flg = 0;
       
-      // define buffers to create the response in
-      uint8_t IMU_Payload_Buff[PKT_MAX_LEN];
-      uint8_t IMU_Pkt_Buff[PKT_MAX_LEN];
-      
-      // extract the desired xbee address from the packet
-      extractFromTlm(ImuDestAddr, CmdData, 8);
-      debug_serial.println(ImuDestAddr);
-      
-      // add the information to the buffer
-      payloadLength = create_IMU_payload(IMU_Payload_Buff, IMUData);
-      
-      // send the telemetry message by adding the buffer to the header
-      success_flg = ccsds_xbee.sendTlmMsg(ImuDestAddr, IMU_APID, IMU_Pkt_Buff, payloadLength);
-      
-      if(success_flg > 0){
-        // increment the cmd executed counter
-        CmdExeCtr++;
-      }
-      else{
-        CmdRejCtr++;
-      }
-      
+      executeReqIMUCommand(CmdData, IMUData);
       break;
     }
     // Init_Req
     case REQINIT_FCNCODE:
     {
-      /* 
-       * This command requests that the initalization status of the payload be
-       * sent to a specific xbee. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Xbee address (1 byte)
-       * There is one parameter associated with this command, the address
-       * of the xbee to send the Init message to. The format of the INIT message
-       * which is sent out is:
-       *   CCSDS Telemetry Header (12 bytes)
-       *   Xbee stats (uint8_t)
-       *   RTC Running (uint8_t)
-       *   RTC Started (uint8_t)
-       *   BNO Initalized (uint8_t)
-       *   MCP Initalized (uint8_t)
-       *   BME Initalized (uint8_t)
-       *   SSC Initalized (uint8_t)
-       *   SD Detected (uint8_t)
-       */
-      debug_serial.print("Received Req_Init Cmd to addr:");
-
-      // define variables to process the command
-      uint8_t InitDestAddr = 0;
-      uint8_t payloadLength = 0;
-      int success_flg = 0;
       
-      // define buffers to create the response in
-      uint8_t Init_Payload_Buff[PKT_MAX_LEN];
-      uint8_t Init_Pkt_Buff[PKT_MAX_LEN];
-      
-      // extract the desired xbee address from the packet
-      extractFromTlm(InitDestAddr, CmdData, 8);
-      debug_serial.println(InitDestAddr);
-      
-      // add the information to the buffer
-      payloadLength = create_INIT_payload(Init_Payload_Buff, InitStat);
-      
-      // send the telemetry message by adding the buffer to the header
-      success_flg = ccsds_xbee.sendTlmMsg(InitDestAddr, INIT_APID, Init_Payload_Buff, payloadLength);
-      
-      if(success_flg > 0){
-        // increment the cmd executed counter
-        CmdExeCtr++;
-      }
-      else{
-        CmdRejCtr++;
-      }
-      
+      executeReqInitCommand(CmdData, InitStat);
       break;
     }
     // SetTime
     case SETTIME_FCNCODE:
     {
-      /* 
-       * This command requests that the time of the RTC be set to the value 
-       * included. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Time (4 byte)
-       * There is one parameter associated with this command, the uint32_t 
-       * number of seconds since unix epoch to set the RTC to.
-       */
-      debug_serial.print("Received SetTime Cmd with time: ");
-
-      // define variables to process the command
-      uint32_t settime = 0;
       
-      // extract the time to set from the packet
-      extractFromTlm(settime, CmdData, 8);
-      debug_serial.println(settime);
-      
-      rtc.adjust(DateTime(settime));
-      
-      // increment the cmd executed counter
-      CmdExeCtr++;
+      executeSetTimeCommand(CmdData);
       break;
     }
     // GetTime
     case REQTIME_FCNCODE:
     {
-      /* 
-       * This command requests that the current RTC time of the payload be
-       * sent to a specific xbee. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Xbee address (1 byte)
-       * There is one parameter associated with this command, the address
-       * of the xbee to send the time message to. The format of the TIME message
-       * which is sent out is:
-       *   CCSDS Telemetry Header (12 bytes)
-       *   Time (uint32_t)
-       */
-      debug_serial.print("Received Req_Time Cmd to addr:");
-
-      // define variables to process the command
-      uint8_t TimeDestAddr = 0;
-      uint8_t payloadLength = 0;
-      int success_flg = 0;
       
-      // define buffers to create the response in
-      uint8_t Time_Payload_Buff[PKT_MAX_LEN];
-      uint8_t Time_Pkt_Buff[PKT_MAX_LEN];
-      
-      // extract the desired xbee address from the packet
-      extractFromTlm(TimeDestAddr, CmdData, 8);
-      debug_serial.println(TimeDestAddr);
-
-      // add the information to the buffer
-      payloadLength = addIntToTlm(rtc.now().unixtime(), Time_Payload_Buff, payloadLength); // Add time to message [uint32_t]
-      
-      // send the telemetry message by adding the buffer to the header
-      success_flg = ccsds_xbee.sendTlmMsg(TimeDestAddr, TIME_APID, Time_Pkt_Buff, payloadLength);
-      
-      if(success_flg > 0){
-        // increment the cmd executed counter
-        CmdExeCtr++;
-      }
-      else{
-        CmdRejCtr++;
-      }
-      
+      executeReqTimeCommand(CmdData);
       break;
     }
     // Req_FileInfo
     case REQFILEINFO_FCNCODE:
     {
-      /* 
-       * This command requests that information about the specified file on the 
-       * SD card be sent to a specific xbee. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Xbee address (1 byte)
-       *   FileIdx (1 byte)
-       * There are two parameters associated with this command, the address
-       * of the xbee to send the FileInfo message to and the index of the file
-       * on the SD card. The format of the FileInfo message which is sent out is:
-       *   CCSDS Telemetry Header (12 bytes)
-       *   Filename (string, 8 bytes)
-       *   Filesize (uint32_t)
-       */
-      debug_serial.print("Received Req_FileInfo Cmd to addr:");
-
-      // define variables to process the command
-      uint8_t FileInfoDestAddr = 0;
-      uint8_t payloadLength = 0;
-      int success_flg = 0;
-      uint8_t pkt_pos;
-      uint8_t file_idx = 0;
       
-      // define buffers to create the response in
-      uint8_t FileInfo_Payload_Buff[PKT_MAX_LEN];
-      uint8_t FileInfo_Pkt_Buff[PKT_MAX_LEN];
-      
-      // extract the desired xbee address from the packet
-      pkt_pos = extractFromTlm(FileInfoDestAddr, CmdData, 8);
-      debug_serial.print(FileInfoDestAddr);
-      debug_serial.print(" for file at idx: ");
-
-      // extract the index of the desired file from the packet
-      pkt_pos = extractFromTlm(file_idx, CmdData, pkt_pos);
-      debug_serial.println(file_idx);
-      
-      // create the packet payload
-      payloadLength = create_FileInfo_payload(FileInfo_Payload_Buff, file_idx);
-      
-      // if we succeeded in creating the payload, create the packet
-      if(payloadLength > 0){
-        
-        // send the telemetry message by adding the buffer to the header
-        success_flg = ccsds_xbee.sendTlmMsg(FileInfoDestAddr, FILEINFO_APID, FileInfo_Pkt_Buff, payloadLength);
-        
-        if(success_flg > 0){
-          // increment the cmd executed counter
-          CmdExeCtr++;
-        }
-        else{
-          CmdRejCtr++;
-        }
-      
-      }
-      else{
-        CmdRejCtr++;
-      }
+      executeReqFileInfoCommand(CmdData);
       break;
     }
     // Req_FilePart
     case REQFILEPART_FCNCODE:
     {
-      /* 
-       * This command requests that part of a file on the SD card be sent to a 
-       * specific xbee. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       *   Xbee address (1 byte)
-       *   FileIdx (1 byte)
-       *   Start Pos (4byte)
-       *   End Pos (4byte)
-       * There are four parameters associated with this command, the address
-       * of the xbee to send the FilePart message, the index of the file
-       * on the SD card, the starting byte position to send, and the ending byte
-       * position to send. Start position must be less than end position and the 
-       * difference in start position and end position must be smaller than 
-       * the maximum packet size. The format of the FilePart message which is sent 
-       * out is:
-       *   CCSDS Telemetry Header (12 bytes)
-       *   Filedata (uint8_t, variable length: end_pos-start_pos)
-       */
-      debug_serial.print("Received Req_FilePart Cmd to addr ");          
       
-      
-      // define variables to process the command
-      uint8_t FilePartDestAddr = 0;
-      uint8_t payloadLength = 0;
-      int success_flg = 0;
-      uint8_t pkt_pos;
-      uint8_t file_idx = 0;
-      uint32_t start_pos = 0;
-      uint32_t end_pos = 0;
-      
-      // define buffers to create the response in
-      uint8_t FilePart_Payload_Buff[PKT_MAX_LEN];
-      uint8_t FilePart_Pkt_Buff[PKT_MAX_LEN];
-        
-      // extract the desired xbee address from the packet
-      pkt_pos = extractFromTlm(FilePartDestAddr, CmdData, 8);
-      debug_serial.print(FilePartDestAddr);
-      debug_serial.print(" for file at idx: ");
-
-      pkt_pos = extractFromTlm(file_idx, CmdData, pkt_pos);
-      debug_serial.print(file_idx);
-
-      debug_serial.print(" from pos: ");
-      pkt_pos = extractFromTlm(start_pos, CmdData, pkt_pos);
-      debug_serial.print(start_pos);
-      debug_serial.print(" to: ");
-      pkt_pos = extractFromTlm(end_pos, CmdData, pkt_pos);
-      debug_serial.println(end_pos);
-
-      // if the user requested a start position after the end 
-      // position, then reject the command
-      if(end_pos < start_pos){
-        CmdRejCtr++;
-        break;
-      }
-      
-      // if the user requested more bytes than a packet can hold
-      // then reject the command
-      if(end_pos - start_pos > PKT_MAX_LEN - 12){
-        CmdRejCtr++;
-        break;
-      }
-      
-      // create the packet payload
-      payloadLength = create_FilePart_payload(FilePart_Payload_Buff, file_idx, start_pos, end_pos);
-      
-      // if we succeeded in creating the payload, create the packet
-      if(payloadLength > 0){
-          
-        // send the telemetry message by adding the buffer to the header
-        success_flg = ccsds_xbee.sendTlmMsg(FilePartDestAddr, FILEPART_APID, FilePart_Pkt_Buff, payloadLength);
-        
-        if(success_flg > 0){
-          // increment the cmd executed counter
-          CmdExeCtr++;
-        }
-        else{
-          CmdRejCtr++;
-        }
-      }
-      else{
-        CmdRejCtr++;
-      }
-
+      executeReqFilePartCommand(CmdData);
       break;
     }
     // Reboot
     case REBOOT_FCNCODE:
     {
-      /* 
-       * This command requests that the payload reboot itself. The format of the command is:
-       *   CCSDS Command Header (8 bytes)
-       * There are no parameters associated with this command.
-       */
-      debug_serial.println("Received Reboot Cmd");
-
-      // set the reboot timer to reboot in 1 second
-      wdt_enable(WDTO_1S);
-
-      // increment the cmd executed counter
-      CmdExeCtr++;
+      
+      executeRebootCommand(CmdData);
       break;    
     }
     /*
@@ -1075,7 +632,7 @@ void command_response(uint8_t CmdData[], uint8_t data_len, struct IMUData_s IMUD
     // unrecognized fcn code
     default:
     {
-      debug_serial.print("unrecognized fcn code ");
+      debug_serial.print(F("unrecognized fcn code "));
       debug_serial.println(getCmdFunctionCode(CmdData), HEX);
       
       // reject command
@@ -1123,12 +680,7 @@ void print_time(File file){
   file.print(buf);
 }
 
-void log_imu(struct IMUData_s IMUData, File IMULogFile){
-/*  log_imu()
- * 
- *  Writes the IMU data to a log file with a timestamp.
- *  
- */
+void writeImuLogEntry(struct IMUData_s IMUData, File IMULogFile){
   
   // print the time to the file
   print_time(IMULogFile);
@@ -1163,8 +715,8 @@ void log_imu(struct IMUData_s IMUData, File IMULogFile){
 
   IMULogFile.flush();
 }
-void log_env(struct ENVData_s ENVData, File ENVLogFile){
-/*  log_env()
+void writeEnvLogEntry(struct ENVData_s ENVData, File ENVLogFile){
+/*  writeEnvLogEntry()
  * 
  *  Writes the ENV data to a log file with a timestamp.
  *  
@@ -1192,8 +744,508 @@ void log_env(struct ENVData_s ENVData, File ENVLogFile){
   ENVLogFile.flush();
 }
 
-void log_pwr(struct PWRData_s PWRData, File PWRLogFile){
-/*  log_pwr()
+void executeNoOpCommand(uint8_t CmdData[]){
+  /*
+   * This command requires no action other than to increment 
+   * the command executed counter to indicate that it was received. 
+   * This command is used to confirm communication with the payload
+   * without causing any further action. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   * There are no parameters associated with this command.
+   */ 
+  debug_serial.println(F("Received NoOp Cmd"));
+
+  // increment the cmd executed counter
+  CmdExeCtr++;
+}
+
+void executeReqHKCommand(uint8_t CmdData[]){
+  /* 
+   * This command requests that a packet containing the payload's
+   * interface information be sent to a specific xbee. The format of 
+   * the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Xbee address (uint8_t)
+   * There is one parameter associated with this command, the address
+   * of the xbee to send the HK message to. The format of the HK message
+   * which is sent out is:
+   *   CCSDS Telemetry Header (12 bytes)
+   *   Command Execution Counter (uint16_t)
+   *   Command Rejection Counter (uint16_t)
+   *   Received Bytes Counter (uint32_t)
+   *   Sent Bytes Counter (uint32_t)
+   *   Payload RunTime (uint32_t)
+   */ 
+  debug_serial.print(F("Received HKReq Cmd to addr "));
+
+  // define variables to process the command
+  uint8_t HKdestAddr = 0;
+  uint16_t pktLength = 0;
+  uint8_t payloadLength = 0;
+  
+  // define buffers to create the response in
+  uint8_t HK_Payload_Buff[PKT_MAX_LEN];
+  uint8_t HK_Pkt_Buff[PKT_MAX_LEN];
+  
+  // extract the desintation address from the command
+  extractFromTlm(HKdestAddr, CmdData, 8);
+  debug_serial.println(HKdestAddr);
+  
+  // add the information to the buffer
+  payloadLength = create_HK_payload(HK_Payload_Buff);
+
+  // create the telemetry message by adding the buffer to the header
+  pktLength = ccsds_xbee.createTlmMsg(HK_Pkt_Buff, HK_APID, HK_Payload_Buff, payloadLength);
+  
+  if(pktLength > 0){
+    // send the data
+    ccsds_xbee.sendRawData(HKdestAddr, HK_Pkt_Buff, pktLength); 
+  }
+
+  // increment the cmd executed counter
+  CmdExeCtr++;
+}
+
+void executeResetCtrCommand(uint8_t CmdData[]){
+  /* 
+   * This command requests that all of the payload's interface counters
+   * be reset to zero. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   * There are no parameters associated with this command. 
+   */ 
+  debug_serial.println(F("Received ResetCtr Cmd"));
+
+  // reset all counters to zero
+  CmdExeCtr = 0;
+  CmdRejCtr = 0;
+  ccsds_xbee.resetCounters();
+
+  // increment the cmd executed counter
+  CmdExeCtr++;
+}
+
+void executeReqENVCommand(uint8_t CmdData[], struct ENVData_s ENVData){
+  /* 
+   * This command requests that the environmental status of the payload be
+   * sent to a specific xbee. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Xbee address (uint8_t)
+   * There is one parameter associated with this command, the address
+   * of the xbee to send the ENV message to. The format of the ENV message
+   * which is sent out is:
+   *   CCSDS Telemetry Header (12 bytes)
+   *   BME pressure (float)
+   *   BME temperature (float)
+   *   BME humidity (float)
+   *   SSC pressure (float)
+   *   SSC temperature (float)
+   *   BNO temperature (float)
+   *   MCP temperature (float)
+   */ 
+  debug_serial.print(F("Received ENV_Req Cmd to addr: "));
+
+  // define variables to process the command
+  uint16_t EnvDestAddr = 0;
+  uint16_t payloadLength = 0;
+  int success_flg = 0;
+  
+  // define buffers to create the response in
+  uint8_t ENV_Payload_Buff[PKT_MAX_LEN];
+  uint8_t ENV_Pkt_Buff[PKT_MAX_LEN];
+  
+  // extract the desired xbee address from the packet
+  extractFromTlm(EnvDestAddr, CmdData, 8);
+  debug_serial.println(EnvDestAddr);
+
+  // add the information to the buffer
+  payloadLength = create_ENV_payload(ENV_Payload_Buff, ENVData);
+
+  // send the telemetry message by adding the buffer to the header
+  success_flg = ccsds_xbee.sendTlmMsg(EnvDestAddr, ENV_APID, ENV_Payload_Buff, payloadLength);
+  
+  if(success_flg > 0){
+    // increment the cmd executed counter
+    CmdExeCtr++;
+  }
+  else{
+    CmdRejCtr++;
+  }
+}
+
+void executeReqPWRCommand(uint8_t CmdData[], struct PWRData_s PWRData){
+  /* 
+   * This command requests that the power status of the payload be
+   * sent to a specific xbee. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Xbee address (1 byte)
+   * There is one parameter associated with this command, the address
+   * of the xbee to send the PWR message to. The format of the PWR message
+   * which is sent out is:
+   *   CCSDS Telemetry Header (12 bytes)
+   *   Battery Voltage (float)
+   *   Current consumption (float)
+   */ 
+  debug_serial.print(F("Received PWR_Req Cmd to addr: "));
+
+  // define variables to process the command
+  uint8_t PwrDestAddr = 0;
+  uint8_t payloadLength = 0;
+  int success_flg = 0;
+  
+  // define buffers to create the response in
+  uint8_t PWR_Payload_Buff[PKT_MAX_LEN];
+  uint8_t PWR_Pkt_Buff[PKT_MAX_LEN];
+  
+  // extract the desired xbee address from the packet
+  extractFromTlm(PwrDestAddr, CmdData, 8);
+  debug_serial.println(PwrDestAddr);
+  
+  // add the information to the buffer
+  payloadLength = create_PWR_payload(PWR_Payload_Buff, PWRData);
+  
+  // send the telemetry message by adding the buffer to the header
+  success_flg = ccsds_xbee.sendTlmMsg(PwrDestAddr, PWR_APID, PWR_Pkt_Buff, payloadLength);
+  
+  if(success_flg > 0){
+    // increment the cmd executed counter
+    CmdExeCtr++;
+  }
+  else{
+    CmdRejCtr++;
+  }
+}
+
+void executeReqIMUCommand(uint8_t CmdData[], struct IMUData_s IMUData){
+  /* 
+   * This command requests that the IMU status of the payload be
+   * sent to a specific xbee. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Xbee address (1 byte)
+   * There is one parameter associated with this command, the address
+   * of the xbee to send the IMU message to. The format of the IMU message
+   * which is sent out is:
+   *   CCSDS Telemetry Header (12 bytes)
+   *   System Calibration (uint8_t)
+   *   Accelerometer Calibration (uint8_t)
+   *   Gyro Calibration (uint8_t)
+   *   Magnetometer Calibration (uint8_t)
+   *   Accelerometer X (float)
+   *   Accelerometer Y (float)
+   *   Accelerometer Z (float)
+   *   Gyro X (float)
+   *   Gyro Y(float)
+   *   Gyro Z (float)
+   *   Magnetometer X (float)
+   *   Magnetometer Y (float)
+   *   Magnetometer Z (float)
+   */ 
+  debug_serial.print(F("Received REQ_IMU Cmd to addr:"));
+
+  // define variables to process the command
+  uint8_t ImuDestAddr = 0;
+  uint8_t payloadLength = 0;
+  int success_flg = 0;
+  
+  // define buffers to create the response in
+  uint8_t IMU_Payload_Buff[PKT_MAX_LEN];
+  uint8_t IMU_Pkt_Buff[PKT_MAX_LEN];
+  
+  // extract the desired xbee address from the packet
+  extractFromTlm(ImuDestAddr, CmdData, 8);
+  debug_serial.println(ImuDestAddr);
+  
+  // add the information to the buffer
+  payloadLength = create_IMU_payload(IMU_Payload_Buff, IMUData);
+  
+  // send the telemetry message by adding the buffer to the header
+  success_flg = ccsds_xbee.sendTlmMsg(ImuDestAddr, IMU_APID, IMU_Pkt_Buff, payloadLength);
+  
+  if(success_flg > 0){
+    // increment the cmd executed counter
+    CmdExeCtr++;
+  }
+  else{
+    CmdRejCtr++;
+  }
+}
+
+void executeReqInitCommand(uint8_t CmdData[], struct InitStat_s InitStat){
+  /* 
+   * This command requests that the initalization status of the payload be
+   * sent to a specific xbee. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Xbee address (1 byte)
+   * There is one parameter associated with this command, the address
+   * of the xbee to send the Init message to. The format of the INIT message
+   * which is sent out is:
+   *   CCSDS Telemetry Header (12 bytes)
+   *   Xbee stats (uint8_t)
+   *   RTC Running (uint8_t)
+   *   RTC Started (uint8_t)
+   *   BNO Initalized (uint8_t)
+   *   MCP Initalized (uint8_t)
+   *   BME Initalized (uint8_t)
+   *   SSC Initalized (uint8_t)
+   *   SD Detected (uint8_t)
+   */
+  debug_serial.print(F("Received Req_Init Cmd to addr:"));
+
+  // define variables to process the command
+  uint8_t InitDestAddr = 0;
+  uint8_t payloadLength = 0;
+  int success_flg = 0;
+  
+  // define buffers to create the response in
+  uint8_t Init_Payload_Buff[PKT_MAX_LEN];
+  uint8_t Init_Pkt_Buff[PKT_MAX_LEN];
+  
+  // extract the desired xbee address from the packet
+  extractFromTlm(InitDestAddr, CmdData, 8);
+  debug_serial.println(InitDestAddr);
+  
+  // add the information to the buffer
+  payloadLength = create_INIT_payload(Init_Payload_Buff, InitStat);
+  
+  // send the telemetry message by adding the buffer to the header
+  success_flg = ccsds_xbee.sendTlmMsg(InitDestAddr, INIT_APID, Init_Payload_Buff, payloadLength);
+  
+  if(success_flg > 0){
+    // increment the cmd executed counter
+    CmdExeCtr++;
+  }
+  else{
+    CmdRejCtr++;
+  }
+}
+
+void executeSetTimeCommand(uint8_t CmdData[]){
+  /* 
+   * This command requests that the time of the RTC be set to the value 
+   * included. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Time (4 byte)
+   * There is one parameter associated with this command, the uint32_t 
+   * number of seconds since unix epoch to set the RTC to.
+   */
+  debug_serial.print(F("Received SetTime Cmd with time: "));
+
+  // define variables to process the command
+  uint32_t settime = 0;
+  
+  // extract the time to set from the packet
+  extractFromTlm(settime, CmdData, 8);
+  debug_serial.println(settime);
+  
+  rtc.adjust(DateTime(settime));
+  
+  // increment the cmd executed counter
+  CmdExeCtr++;
+}
+
+void executeReqTimeCommand(uint8_t CmdData[]){
+  /* 
+   * This command requests that the current RTC time of the payload be
+   * sent to a specific xbee. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Xbee address (1 byte)
+   * There is one parameter associated with this command, the address
+   * of the xbee to send the time message to. The format of the TIME message
+   * which is sent out is:
+   *   CCSDS Telemetry Header (12 bytes)
+   *   Time (uint32_t)
+   */
+  debug_serial.print(F("Received Req_Time Cmd to addr:"));
+
+  // define variables to process the command
+  uint8_t TimeDestAddr = 0;
+  uint8_t payloadLength = 0;
+  int success_flg = 0;
+  
+  // define buffers to create the response in
+  uint8_t Time_Payload_Buff[PKT_MAX_LEN];
+  uint8_t Time_Pkt_Buff[PKT_MAX_LEN];
+  
+  // extract the desired xbee address from the packet
+  extractFromTlm(TimeDestAddr, CmdData, 8);
+  debug_serial.println(TimeDestAddr);
+
+  // add the information to the buffer
+  payloadLength = addIntToTlm(rtc.now().unixtime(), Time_Payload_Buff, payloadLength); // Add time to message [uint32_t]
+  
+  // send the telemetry message by adding the buffer to the header
+  success_flg = ccsds_xbee.sendTlmMsg(TimeDestAddr, TIME_APID, Time_Pkt_Buff, payloadLength);
+  
+  if(success_flg > 0){
+    // increment the cmd executed counter
+    CmdExeCtr++;
+  }
+  else{
+    CmdRejCtr++;
+  }
+}
+
+void executeReqFileInfoCommand(uint8_t CmdData[]){
+  /* 
+   * This command requests that information about the specified file on the 
+   * SD card be sent to a specific xbee. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Xbee address (1 byte)
+   *   FileIdx (1 byte)
+   * There are two parameters associated with this command, the address
+   * of the xbee to send the FileInfo message to and the index of the file
+   * on the SD card. The format of the FileInfo message which is sent out is:
+   *   CCSDS Telemetry Header (12 bytes)
+   *   Filename (string, 8 bytes)
+   *   Filesize (uint32_t)
+   */
+  debug_serial.print(F("Received Req_FileInfo Cmd to addr:"));
+
+  // define variables to process the command
+  uint8_t FileInfoDestAddr = 0;
+  uint8_t payloadLength = 0;
+  int success_flg = 0;
+  uint8_t pkt_pos;
+  uint8_t file_idx = 0;
+  
+  // define buffers to create the response in
+  uint8_t FileInfo_Payload_Buff[PKT_MAX_LEN];
+  uint8_t FileInfo_Pkt_Buff[PKT_MAX_LEN];
+  
+  // extract the desired xbee address from the packet
+  pkt_pos = extractFromTlm(FileInfoDestAddr, CmdData, 8);
+  debug_serial.print(FileInfoDestAddr);
+  debug_serial.print(F(" for file at idx: "));
+
+  // extract the index of the desired file from the packet
+  pkt_pos = extractFromTlm(file_idx, CmdData, pkt_pos);
+  debug_serial.println(file_idx);
+  
+  // create the packet payload
+  payloadLength = create_FileInfo_payload(FileInfo_Payload_Buff, file_idx);
+  
+  // if we succeeded in creating the payload, create the packet
+  if(payloadLength > 0){
+    
+    // send the telemetry message by adding the buffer to the header
+    success_flg = ccsds_xbee.sendTlmMsg(FileInfoDestAddr, FILEINFO_APID, FileInfo_Pkt_Buff, payloadLength);
+    
+    if(success_flg > 0){
+      // increment the cmd executed counter
+      CmdExeCtr++;
+    }
+    else{
+      CmdRejCtr++;
+    }
+  
+  }
+  else{
+    CmdRejCtr++;
+  }
+}
+
+void executeReqFilePartCommand(uint8_t CmdData[]){
+  /* 
+   * This command requests that part of a file on the SD card be sent to a 
+   * specific xbee. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   *   Xbee address (1 byte)
+   *   FileIdx (1 byte)
+   *   Start Pos (4byte)
+   *   End Pos (4byte)
+   * There are four parameters associated with this command, the address
+   * of the xbee to send the FilePart message, the index of the file
+   * on the SD card, the starting byte position to send, and the ending byte
+   * position to send. Start position must be less than end position and the 
+   * difference in start position and end position must be smaller than 
+   * the maximum packet size. The format of the FilePart message which is sent 
+   * out is:
+   *   CCSDS Telemetry Header (12 bytes)
+   *   Filedata (uint8_t, variable length: end_pos-start_pos)
+   */
+  debug_serial.print(F("Received Req_FilePart Cmd to addr "));          
+  
+  
+  // define variables to process the command
+  uint8_t FilePartDestAddr = 0;
+  uint8_t payloadLength = 0;
+  int success_flg = 0;
+  uint8_t pkt_pos;
+  uint8_t file_idx = 0;
+  uint32_t start_pos = 0;
+  uint32_t end_pos = 0;
+  
+  // define buffers to create the response in
+  uint8_t FilePart_Payload_Buff[PKT_MAX_LEN];
+  uint8_t FilePart_Pkt_Buff[PKT_MAX_LEN];
+    
+  // extract the desired xbee address from the packet
+  pkt_pos = extractFromTlm(FilePartDestAddr, CmdData, 8);
+  debug_serial.print(FilePartDestAddr);
+  debug_serial.print(F(" for file at idx: "));
+
+  pkt_pos = extractFromTlm(file_idx, CmdData, pkt_pos);
+  debug_serial.print(file_idx);
+
+  debug_serial.print(F(" from pos: "));
+  pkt_pos = extractFromTlm(start_pos, CmdData, pkt_pos);
+  debug_serial.print(start_pos);
+  debug_serial.print(F(" to: "));
+  pkt_pos = extractFromTlm(end_pos, CmdData, pkt_pos);
+  debug_serial.println(end_pos);
+
+  // if the user requested a start position after the end 
+  // position, then reject the command
+  if(end_pos < start_pos){
+    CmdRejCtr++;
+    return;
+  }
+  
+  // if the user requested more bytes than a packet can hold
+  // then reject the command
+  if(end_pos - start_pos > PKT_MAX_LEN - 12){
+    CmdRejCtr++;
+    return;
+  }
+  
+  // create the packet payload
+  payloadLength = create_FilePart_payload(FilePart_Payload_Buff, file_idx, start_pos, end_pos);
+  
+  // if we succeeded in creating the payload, create the packet
+  if(payloadLength > 0){
+      
+    // send the telemetry message by adding the buffer to the header
+    success_flg = ccsds_xbee.sendTlmMsg(FilePartDestAddr, FILEPART_APID, FilePart_Pkt_Buff, payloadLength);
+    
+    if(success_flg > 0){
+      // increment the cmd executed counter
+      CmdExeCtr++;
+    }
+    else{
+      CmdRejCtr++;
+    }
+  }
+  else{
+    CmdRejCtr++;
+  }
+}
+
+void executeRebootCommand(uint8_t CmdData[]){
+  /* 
+   * This command requests that the payload reboot itself. The format of the command is:
+   *   CCSDS Command Header (8 bytes)
+   * There are no parameters associated with this command.
+   */
+  debug_serial.println(F("Received Reboot Cmd"));
+
+  // set the reboot timer to reboot in 1 second
+  wdt_enable(WDTO_1S);
+
+  // increment the cmd executed counter
+  CmdExeCtr++;
+}
+      
+void writePwrLogEntry(struct PWRData_s PWRData, File PWRLogFile){
+/*  writePwrLogEntry()
  * 
  *  Writes the PWR data to a log file with a timestamp.
  *  
@@ -1211,13 +1263,7 @@ void log_pwr(struct PWRData_s PWRData, File PWRLogFile){
   PWRLogFile.flush();
 }
 
-void read_env(struct ENVData_s *ENVData){
-/*  read_env()
- * 
- *  Reads all of the environmental sensors and stores data in 
- *  a structure.
- *  
- */
+void readEnvSensorsIntoStruct(struct ENVData_s *ENVData){
  
   //BME280
   ENVData->bme_pres = bme.readPressure() / 100.0F; // hPa
@@ -1237,24 +1283,14 @@ void read_env(struct ENVData_s *ENVData){
   ENVData->mcp_temp = tempsensor.readTempC(); // degC
 }
 
-void read_pwr(struct PWRData_s *PWRData){
-/*  read_pwr()
- * 
- *  Reads all of the power sensors and stores data in 
- *  a structure.
- *  
- */
+void readPwrSensorsIntoStruct(struct PWRData_s *PWRData){
+
   PWRData->batt_volt = ((float)ads.readADC_SingleEnded(2)) * 0.002 * 3.0606; // V
   PWRData->i_consump = (((float)ads.readADC_SingleEnded(3)) * 0.002 - 2.5) * 10;
 }
 
-void read_imu(struct IMUData_s *IMUData){
-/*  read_imu()
- * 
- *  Reads all of the IMU sensors and stores data in 
- *  a structure.
- *  
- */
+void readImuSensorsIntoStruct(struct IMUData_s *IMUData){
+
   uint8_t system_cal, gyro_cal, accel_cal, mag_cal = 0;
   bno.getCalibration(&system_cal, &gyro_cal, &accel_cal, &mag_cal);
 
@@ -1408,7 +1444,6 @@ uint16_t create_FileInfo_payload(uint8_t Payload_Buff[], uint8_t file_idx){
 
     // open next file
     entry =  rootdir.openNextFile();
-    
   }
 
   // if file idx exists
@@ -1474,4 +1509,145 @@ uint16_t create_FilePart_payload(uint8_t Payload_Buff[], uint8_t file_idx, uint3
   rootdir.close();
   
   return payloadLength;
+}
+
+void initalizeRTCandReturnStatus(struct InitStat_s *InitStat){
+  /* The RTC is used so that the log files contain timestamps. If the RTC
+   *  is not running (because no battery is inserted) the RTC will be initalized
+   *  to the time that this sketch was compiled at.
+   */
+  InitStat->rtc_start = rtc.begin();
+  if (!InitStat->rtc_start) {
+    debug_serial.println(F("RTC NOT detected."));
+  }
+  else{
+    debug_serial.println(F("RTC detected!"));
+    InitStat->rtc_running = rtc.isrunning();
+  }
+}
+
+void initalizeSDandReturnStatus(struct InitStat_s *InitStat){
+  //// Init SD card
+  /* The SD card is used to store all of the log files.
+   */
+  SPI.begin();
+  pinMode(53,OUTPUT);
+  InitStat->SD_detected = SD.begin(53);
+  if (!InitStat->SD_detected) {
+    debug_serial.println(F("SD Card NOT detected."));
+  }
+  else{
+    debug_serial.println(F("SD Card detected!"));
+  }
+}
+
+void openLogFiles(){
+  //// Open log files
+  // NOTE: Filenames must be shorter than 8 characters
+   
+  xbeeLogFile = SD.open("XBEE_LOG.txt", FILE_WRITE);
+  delay(10);
+  
+  // for data files, write a header
+  initLogFile = SD.open("INIT_LOG.txt", FILE_WRITE);
+  initLogFile.println(F("DateTime,RTCStart,RTCRun,BNO,BME,MCP,SSC,Xbee"));
+  initLogFile.flush(); 
+  delay(10);
+  IMULogFile = SD.open("IMU_LOG.txt", FILE_WRITE);
+IMULogFile.println(F("DateTime,SystemCal[0-3],AccelCal[0-3],GyroCal[0-3],MagCal[0-3],AccelX[m/s^2],AccelY[m/s^2],AccelZ[m/s^2],GyroX[rad/s],GyroY[rad/s],GyroZ[rad/s],MagX[uT],MagY[uT],MagZ[uT]"));
+  IMULogFile.flush();  
+  delay(10);
+  PWRLogFile = SD.open("PWR_LOG.txt", FILE_WRITE);
+  PWRLogFile.println(F("DateTime,BatteryVoltage[V],CurrentConsumption[A]"));
+  PWRLogFile.flush();
+  delay(10);
+  ENVLogFile = SD.open("ENV_LOG.txt", FILE_WRITE);
+  ENVLogFile.println(F("DateTime,BMEPressure[hPa],BMETemp[degC],BMEHumidity[%],SSCPressure[PSI],SSCTemp[degC],BNOTemp[degC],MCPTemp[degC]"));
+  ENVLogFile.flush();
+  delay(10);  
+}
+
+void initalizeXbeeAndReturnStatus(struct InitStat_s *InitStat){
+  /* InitXbee() will configure the attached xbee so that it can talk to
+   *   xbees which also use this library. It also handles the initalization
+   *   of the adafruit xbee library
+   */
+  InitStat->xbeeStatus = ccsds_xbee.init(XBee_MY_Addr, XBee_PAN_ID, xbee_serial);
+  if(!InitStat->xbeeStatus) {
+    debug_serial.println(F("XBee Initialized!"));
+  } else {
+    debug_serial.print(F("XBee Failed to Initialize with Error Code: "));
+    debug_serial.println(InitStat->xbeeStatus);
+  }
+
+  ccsds_xbee.add_rtc(rtc);
+  ccsds_xbee.start_logging(xbeeLogFile);
+}
+
+void initalizeBNOandReturnStatus(struct InitStat_s *InitStat){
+  //// BNO
+  InitStat->BNO_init = bno.begin();
+  if(!InitStat->BNO_init){
+    debug_serial.println("BNO055 NOT detected.");
+  }
+  else{
+    debug_serial.println("BNO055 detected!");
+  }
+  delay(200);
+  bno.setExtCrystalUse(true);
+}
+
+void initalizeMCPandReturnStatus(struct InitStat_s *InitStat){
+  //// MCP9808
+  InitStat->MCP_init = tempsensor.begin(0x18);
+  if (!InitStat->MCP_init) {
+    debug_serial.println("MCP9808 NOT detected.");
+  }
+  else{
+    debug_serial.println("MCP9808 detected!");
+  }
+}
+
+void initalizeBMEandReturnStatus(struct InitStat_s *InitStat){
+  //// Init BME
+  // Temp/pressure/humidity sensor
+  InitStat->BME_init = bme.begin(0x76);
+  if (!InitStat->BME_init) {
+    debug_serial.println("BME280 NOT detected.");
+  }
+  else{
+    debug_serial.println("BME280 detected!");
+  }
+}
+
+void initalizeSSCandReturnStatus(struct InitStat_s *InitStat){
+
+  //// Init SSC
+  //  set min / max reading and pressure, see datasheet for the values for your 
+  //  sensor
+  ssc.setMinRaw(0);
+  ssc.setMaxRaw(16383);
+  ssc.setMinPressure(0.0);
+  ssc.setMaxPressure(30);
+  //  start the sensor
+  InitStat->SSC_init = ssc.start();
+  if(!InitStat->SSC_init){
+    debug_serial.println("SSC started ");
+  }
+  else{
+    debug_serial.println("SSC failed!");
+  }
+}
+
+void initalizeADSandReturnStatus(struct InitStat_s *InitStat){
+
+  //// Init ADS
+  // ADC, used for current consumption/battery voltage
+  ads.begin();
+  ads.setGain(GAIN_ONE);
+  debug_serial.println("Initialized ADS1015");
+}
+
+bool isPacketCorrectLength(int BytesRead, uint8_t ReadData[]){
+  return BytesRead != getPacketLength(ReadData);
 }

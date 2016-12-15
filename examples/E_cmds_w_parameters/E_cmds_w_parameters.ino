@@ -166,7 +166,7 @@ void packet_processing(uint8_t Pkt_Buff[]){
   }
 
   // validate command checksum
-  if(!validateChecksum(Pkt_Buff)){
+  if(!packetHasValidChecksum(Pkt_Buff)){
     Serial.println("Command checksum doesn't validate");
     return;
   }

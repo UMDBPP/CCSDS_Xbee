@@ -170,7 +170,7 @@ void packet_processing(uint8_t Pkt_Buff[]){
    * the data we received, and return true it matches the checksum sent with the packet or false
    * otherwise. If the packet's checksum doesn't validate then we stop processing this packet.
    */
-  if(!validateChecksum(Pkt_Buff)){
+  if(!packetHasValidChecksum(Pkt_Buff)){
     Serial.println("Command checksum doesn't validate");
     return;
   }

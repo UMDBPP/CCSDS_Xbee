@@ -177,6 +177,17 @@ example:
 	// initalize a PL command which sets the Xbee power level to max
 	uint8_t PLCmd[] = {'P','L'};
 	uint8_t PLSetVal[] = {0x04};
+  
+  // Note: Need to test
+/*
+  // initalize a EE command which sets the Xbee encyption to enabled
+	uint8_t EECmd[] = {'E','E'};
+	uint8_t EESetVal[] = {0x01};
+
+  // initalize a KY command which sets the encyption key
+	uint8_t KYCmd[] = {'K','Y'};
+	uint8_t KYSetVal[] = {11235813213455891442333776109871};
+*/
 
 	// send the MY command to set the address
 	atRequest = AtCommandRequest(MYCmd, MYSetVal, sizeof(MYSetVal));
@@ -221,6 +232,18 @@ example:
 	// send a command to set the power level
 	atRequest = AtCommandRequest(PLCmd, PLSetVal, sizeof(PLSetVal));   
 	STATUS |= sendAtCommand(atRequest) << 10;
+  
+  // Note: Need to test
+/*
+  // send a command to set the encrytion enabled
+	atRequest = AtCommandRequest(EECmd, EESetVal, sizeof(EESetVal));   
+	STATUS |= sendAtCommand(atRequest) << 11;
+
+  send a command to set the encryption key
+  atRequest = AtCommandRequest(KYCmd, KYSetVal, sizeof(KYSetVal));   
+	STATUS |= sendAtCommand(atRequest) << 12;
+  
+*/
 
 	// return the status variable
 	return STATUS;
@@ -1103,7 +1126,7 @@ void setCmdChecksum(uint8_t _packet[], uint8_t checksum) {
 	CCSDS_WR_CHECKSUM((*shdr), checksum);
 }
 
-uint8_t validateChecksum(uint8_t _packet[]) {
+uint8_t packetHasValidChecksum(uint8_t _packet[]) {
 	CCSDS_CmdPkt_t *header = (CCSDS_CmdPkt_t*) _packet;
 
 	return CCSDS_ValidCheckSum(header);
