@@ -206,7 +206,8 @@ CCSDS_TlmSecHdr_t getTlmHeader(uint8_t _packet[]);
 CCSDS_CmdSecHdr_t getCmdHeader(uint8_t _packet[]);
 CCSDS_TlmPkt_t getTlmPkt(uint8_t _packet[]);
 CCSDS_CmdPkt_t getCmdPkt(uint8_t _packet[]);
-
+uint8_t isCommandPacket(uint8_t _packet[]);
+uint8_t isTelemetryPacket(uint8_t _packet[]);
 
 //////////////////////////////////////////////////////////////
 //                     Utility Functions                    //

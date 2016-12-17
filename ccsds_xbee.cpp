@@ -1173,3 +1173,11 @@ uint8_t addStrToTlm(const String &s, uint8_t payload[], uint8_t start_pos){
 }
 */
 
+uint8_t isCommandPacket(uint8_t _packet[]) {
+
+	return getPacketType(_packet) == CCSDS_CMD_PKT;
+}
+uint8_t isTelemetryPacket(uint8_t _packet[]) {
+
+	return getPacketType(_packet) == CCSDS_TLM_PKT;
+}

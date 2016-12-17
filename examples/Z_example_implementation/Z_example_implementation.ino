@@ -11,7 +11,7 @@
  *  This sketch builds upon the other tutorials, demonstrating the nominal 
  *  usage of the library for a balloon payload and defining the standard 
  *  commands that a payload implemented on a balloonduino is expected to 
- *  implement. It is designed to be  a starting point for payloads to 
+ *  implement. It is designed to be a starting point for payloads to 
  *  add their customizations / mission-specific functionality to.
  */
    
@@ -85,17 +85,14 @@ CCSDS_Xbee ccsds_xbee;
 #define debug_serial Serial
 #define xbee_serial Serial3
 
-//// Timing
-// timing counters
-uint16_t imu_read_ctr = 0;
-uint16_t pwr_read_ctr = 0;
-uint16_t env_read_ctr = 0;
+//// Sensor Timing
+uint32_t imuReadPeriod = 10; // ms
+uint32_t pwrReadPeriod = 100; // ms
+uint32_t envReadPeriod = 100; // ms
 
-// rate setting
-// sensors will be read every X cycles
-uint16_t imu_read_lim = 10;
-uint16_t pwr_read_lim = 100;
-uint16_t env_read_lim = 100;
+uint32_t imuLastReadTime = 0;
+uint32_t pwrLastReadTime = 0;
+uint32_t envLastReadTime = 0;
 
 //// Xbee setup parameters
 /*
@@ -162,8 +159,8 @@ struct InitStat_s {
  * commands are executed and rejected for use in debugging 
  * communication/commanding issues.
  */ 
-uint16_t CmdExeCtr;
-uint16_t CmdRejCtr;
+uint16_t CommandExecutionCounter = 0;
+uint16_t CommandRejectionCounter = 0;
 
 //// Other variables
 uint32_t start_millis = 0;
@@ -204,6 +201,7 @@ void initalizeMCPandReturnStatus(struct InitStat_s *InitStat);
 void initalizeBMEandReturnStatus(struct InitStat_s *InitStat);
 void initalizeSSCandReturnStatus(struct InitStat_s *InitStat);
 void initalizeADSandReturnStatus(struct InitStat_s *InitStat);
+void initalizeSoftRTCandReturnStatus(struct InitStat_s *InitStat);
 
 // data handling
 void respondToData(uint8_t data[], uint8_t data_len, struct IMUData_s IMUData, struct ENVData_s ENVData, struct PWRData_s PWRData);
@@ -234,6 +232,12 @@ void executeReqFilePartCommand(uint8_t CmdData[]);
 void executeRebootCommand(uint8_t CmdData[]);
 
 // sensor reading
+uint16_t processIMU(uint16_t imu_read_ctr, struct IMUData_s *IMUData);
+uint16_t processPWR(uint16_t pwr_read_ctr, struct PWRData_s *PWRData);
+uint16_t processENV(uint16_t env_read_ctr, struct ENVData_s *ENVData);
+bool isTimeToReadImu(uint16_t imu_read_ctr);
+bool isTimeToReadPwr(uint16_t pwr_read_ctr);
+bool isTimeToReadEnv(uint16_t env_read_ctr);
 void readImuSensorsIntoStruct(struct IMUData_s *IMUData);
 void readPwrSensorsIntoStruct(struct PWRData_s *PWRData);
 void readEnvSensorsIntoStruct(struct ENVData_s *ENVData);
@@ -246,28 +250,13 @@ void writeInitLogEntry(File initLogFile, struct InitStat_s InitStat);
 
 // utility
 void print_time(File file);
-bool isTimeToReadImu(uint16_t imu_read_ctr);
-bool isTimeToReadPwr(uint16_t pwr_read_ctr);
-bool isTimeToReadEnv(uint16_t env_read_ctr);
 bool isPacketCorrectLength(int BytesRead, uint8_t ReadData[]);
+void initalizeCounters();
+void recordCommandSuccess();
+void recordCommandFailure();
+void recordStatusOfCommand(bool success_flg);
 
 void setup() {
-  /* setup()
-   *  
-   * Disables watchdog timer (in case its on)
-   * Initalizes all the link hardware/software including:
-   *   Serial
-   *   Xbee
-   *   RTC
-   *   SoftRTC
-   *   BNO
-   *   MCP
-   *   BME
-   *   SSC
-   *   ADS
-   *   SD card
-   *   Log files
-   */
 
   // disable the watchdog timer immediately in case it was on because of a 
   // commanded reboot
@@ -281,9 +270,7 @@ void setup() {
  
   initalizeRTCandReturnStatus(&InitStat);
 
-  //// SoftRTC (for subsecond precision)
-  SoftRTC.begin(rtc.now());  // Initialize SoftRTC to the current time
-  start_millis = millis();  // get the current millisecond count
+  initalizeSoftRTCandReturnStatus(&InitStat);
 
   initalizeSDandReturnStatus(&InitStat);
   
@@ -301,9 +288,7 @@ void setup() {
   
   initalizeADSandReturnStatus(&InitStat);
 
-  //// set interface counters to zero
-  CmdExeCtr = 0;
-  CmdRejCtr = 0;
+  initalizeCounters();
   
   writeInitLogEntry(initLogFile, InitStat);
 
@@ -312,11 +297,6 @@ void setup() {
 }
 
 void loop() {
-  /*  loop()
-   *  
-   *  Reads sensor data if cycle counters indicate to
-   *  Reads from xbee and processes any data
-   */
   
   // declare structures to store data
   /*
@@ -329,27 +309,9 @@ void loop() {
   PWRData_s PWRData;
   ENVData_s ENVData;
 
-  // increment read counters
-  imu_read_ctr++;
-  pwr_read_ctr++;
-  env_read_ctr++;
-
-  // read sensors if number of cycles since last read has elapsed
-  if(isTimeToReadImu(imu_read_ctr)){
-    readImuSensorsIntoStruct(&IMUData);
-    writeImuLogEntry(IMUData, IMULogFile);
-    imu_read_ctr = 0;
-  }
-  if(isTimeToReadPwr(pwr_read_ctr)){
-    readPwrSensorsIntoStruct(&PWRData);
-    writePwrLogEntry(PWRData, PWRLogFile);
-    pwr_read_ctr = 0;
-  }
-  if(isTimeToReadEnv(env_read_ctr)){
-    readEnvSensorsIntoStruct(&ENVData);
-    writeEnvLogEntry(ENVData, ENVLogFile);
-    env_read_ctr = 0;
-  }  
+  processIMU(&IMUData);
+  processPWR(&PWRData);
+  processENV(&ENVData);
 
   // initalize a counter to record how many bytes were read this iteration
   int BytesRead = 0;
@@ -366,13 +328,13 @@ void loop() {
     
     if(isPacketCorrectLength(BytesRead, ReadData)){
       
-      Serial.print(F("Received packet with expected length"));
-      Serial.print(getPacketLength(ReadData));
-      Serial.print(F(" but actual length "));
-      Serial.print(BytesRead);
+      debug_serial.print(F("Received packet with expected length"));
+      debug_serial.print(getPacketLength(ReadData));
+      debug_serial.print(F(" but actual length "));
+      debug_serial.print(BytesRead);
       
       // indicate that we rejected a command
-      CmdRejCtr++;
+      CommandRejectionCounter++;
     }
     else{
 
@@ -391,6 +353,8 @@ void loop() {
   /* NOTE: this introduces a limit on data throughput by how many packets can be processed
    *   per unit of time. With a 10ms delay, assuming 0 processing time (which is not realistic) 
    *   we can process at most 100 packets/sec.
+   * NOTE: Before this is changed testing should be done with the xbee to ensure that
+   * it doesn't cause partial packets to be read.
    */
   delay(10);
 }
@@ -420,26 +384,6 @@ void writeInitLogEntry(File initLogFile, struct InitStat_s InitStat){
   
 }
 
-bool isTimeToReadImu(uint16_t imu_read_ctr){
-  
-  /*
-   * There are several ways to decide when to read the IMU...
-   * Either time-based sampling or cycle based cycling could 
-   * be used. This function currently implements cycle-based
-   * sampling but could be changed to trigger at a periodic 
-   * time.
-   */
-  return imu_read_ctr > imu_read_lim;
-}
-
-bool isTimeToReadPwr(uint16_t pwr_read_ctr){
-  return pwr_read_ctr > pwr_read_lim;
-}
-
-bool isTimeToReadEnv(uint16_t env_read_ctr){
-  return env_read_ctr > env_read_lim;
-}
-
 bool isValidCommandHeader(uint8_t data[]){
   // get the APID (the field which identifies the type of packet)
   uint16_t APID = getAPID(data);
@@ -448,7 +392,7 @@ bool isValidCommandHeader(uint8_t data[]){
    * The following check confirms that the packet we received is
    * designated as a command packet.
    */ 
-  if(!getPacketType(data)){
+  if(!isCommandPacket(data)){
     debug_serial.print(F("Not a command packet"));
     return false;
   }
@@ -472,7 +416,7 @@ bool isValidCommandHeader(uint8_t data[]){
   // validate command checksum
   if(!packetHasValidChecksum(data)){
     debug_serial.println(F("Command checksum doesn't validate"));
-    CmdRejCtr++;
+    CommandRejectionCounter++;
     return false;
   }
   
@@ -485,7 +429,7 @@ bool isValidTelemetryHeader(uint8_t data[]){
    * The following check confirms that the packet we received is
    * designated as a telemetry packet.
    */ 
-  if(getPacketType(data)){
+  if(!isTelemetryPacket(data)){
     debug_serial.print(F("Not a telemetry packet"));
     return false;
   }
@@ -636,7 +580,7 @@ void respondToCommand(uint8_t CmdData[], uint8_t cmdData_len, struct IMUData_s I
       debug_serial.println(getCmdFunctionCode(CmdData), HEX);
       
       // reject command
-      CmdRejCtr++;
+      recordCommandFailure();
     }
   } // end switch(FcnCode)
 
@@ -655,8 +599,8 @@ uint16_t create_HK_payload(uint8_t Pkt_Buff[]){
   uint16_t payloadSize = 0;
   
   // Add counter values to the pkt
-  payloadSize = addIntToTlm(CmdExeCtr, Pkt_Buff, payloadSize); // Add counter of sent packets to message
-  payloadSize = addIntToTlm(CmdRejCtr, Pkt_Buff, payloadSize); // Add counter of sent packets to message
+  payloadSize = addIntToTlm(CommandExecutionCounter, Pkt_Buff, payloadSize); // Add counter of sent packets to message
+  payloadSize = addIntToTlm(CommandRejectionCounter, Pkt_Buff, payloadSize); // Add counter of sent packets to message
   payloadSize = addIntToTlm(ccsds_xbee.getRcvdByteCtr(), Pkt_Buff, payloadSize); // Add counter of sent packets to message
   payloadSize = addIntToTlm(ccsds_xbee.getSentByteCtr(), Pkt_Buff, payloadSize); // Add counter of sent packets to message
   payloadSize = addIntToTlm(millis()/1000L, Pkt_Buff, payloadSize); // Timer
@@ -678,6 +622,7 @@ void print_time(File file){
   char buf[50];
   sprintf(buf, "%02d/%02d/%02d %02d:%02d:%02d.%03d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second(),(nowMS - start_millis)%1000);  // print milliseconds);
   file.print(buf);
+  file.flush();
 }
 
 void writeImuLogEntry(struct IMUData_s IMUData, File IMULogFile){
@@ -756,7 +701,7 @@ void executeNoOpCommand(uint8_t CmdData[]){
   debug_serial.println(F("Received NoOp Cmd"));
 
   // increment the cmd executed counter
-  CmdExeCtr++;
+  recordCommandSuccess();
 }
 
 void executeReqHKCommand(uint8_t CmdData[]){
@@ -803,7 +748,7 @@ void executeReqHKCommand(uint8_t CmdData[]){
   }
 
   // increment the cmd executed counter
-  CmdExeCtr++;
+  recordCommandSuccess();
 }
 
 void executeResetCtrCommand(uint8_t CmdData[]){
@@ -815,13 +760,10 @@ void executeResetCtrCommand(uint8_t CmdData[]){
    */ 
   debug_serial.println(F("Received ResetCtr Cmd"));
 
-  // reset all counters to zero
-  CmdExeCtr = 0;
-  CmdRejCtr = 0;
-  ccsds_xbee.resetCounters();
+  initalizeCounters();
 
   // increment the cmd executed counter
-  CmdExeCtr++;
+  recordCommandSuccess();
 }
 
 void executeReqENVCommand(uint8_t CmdData[], struct ENVData_s ENVData){
@@ -863,13 +805,7 @@ void executeReqENVCommand(uint8_t CmdData[], struct ENVData_s ENVData){
   // send the telemetry message by adding the buffer to the header
   success_flg = ccsds_xbee.sendTlmMsg(EnvDestAddr, ENV_APID, ENV_Payload_Buff, payloadLength);
   
-  if(success_flg > 0){
-    // increment the cmd executed counter
-    CmdExeCtr++;
-  }
-  else{
-    CmdRejCtr++;
-  }
+  recordStatusOfCommand(success_flg);
 }
 
 void executeReqPWRCommand(uint8_t CmdData[], struct PWRData_s PWRData){
@@ -906,13 +842,7 @@ void executeReqPWRCommand(uint8_t CmdData[], struct PWRData_s PWRData){
   // send the telemetry message by adding the buffer to the header
   success_flg = ccsds_xbee.sendTlmMsg(PwrDestAddr, PWR_APID, PWR_Pkt_Buff, payloadLength);
   
-  if(success_flg > 0){
-    // increment the cmd executed counter
-    CmdExeCtr++;
-  }
-  else{
-    CmdRejCtr++;
-  }
+  recordStatusOfCommand(success_flg);
 }
 
 void executeReqIMUCommand(uint8_t CmdData[], struct IMUData_s IMUData){
@@ -960,13 +890,7 @@ void executeReqIMUCommand(uint8_t CmdData[], struct IMUData_s IMUData){
   // send the telemetry message by adding the buffer to the header
   success_flg = ccsds_xbee.sendTlmMsg(ImuDestAddr, IMU_APID, IMU_Pkt_Buff, payloadLength);
   
-  if(success_flg > 0){
-    // increment the cmd executed counter
-    CmdExeCtr++;
-  }
-  else{
-    CmdRejCtr++;
-  }
+  recordStatusOfCommand(success_flg);
 }
 
 void executeReqInitCommand(uint8_t CmdData[], struct InitStat_s InitStat){
@@ -1009,13 +933,7 @@ void executeReqInitCommand(uint8_t CmdData[], struct InitStat_s InitStat){
   // send the telemetry message by adding the buffer to the header
   success_flg = ccsds_xbee.sendTlmMsg(InitDestAddr, INIT_APID, Init_Payload_Buff, payloadLength);
   
-  if(success_flg > 0){
-    // increment the cmd executed counter
-    CmdExeCtr++;
-  }
-  else{
-    CmdRejCtr++;
-  }
+  recordStatusOfCommand(success_flg);
 }
 
 void executeSetTimeCommand(uint8_t CmdData[]){
@@ -1039,7 +957,7 @@ void executeSetTimeCommand(uint8_t CmdData[]){
   rtc.adjust(DateTime(settime));
   
   // increment the cmd executed counter
-  CmdExeCtr++;
+  recordCommandSuccess();
 }
 
 void executeReqTimeCommand(uint8_t CmdData[]){
@@ -1075,13 +993,8 @@ void executeReqTimeCommand(uint8_t CmdData[]){
   // send the telemetry message by adding the buffer to the header
   success_flg = ccsds_xbee.sendTlmMsg(TimeDestAddr, TIME_APID, Time_Pkt_Buff, payloadLength);
   
-  if(success_flg > 0){
-    // increment the cmd executed counter
-    CmdExeCtr++;
-  }
-  else{
-    CmdRejCtr++;
-  }
+  recordStatusOfCommand(success_flg);
+
 }
 
 void executeReqFileInfoCommand(uint8_t CmdData[]){
@@ -1129,17 +1042,11 @@ void executeReqFileInfoCommand(uint8_t CmdData[]){
     // send the telemetry message by adding the buffer to the header
     success_flg = ccsds_xbee.sendTlmMsg(FileInfoDestAddr, FILEINFO_APID, FileInfo_Pkt_Buff, payloadLength);
     
-    if(success_flg > 0){
-      // increment the cmd executed counter
-      CmdExeCtr++;
-    }
-    else{
-      CmdRejCtr++;
-    }
+    recordStatusOfCommand(success_flg);
   
   }
   else{
-    CmdRejCtr++;
+    recordCommandFailure();
   }
 }
 
@@ -1196,14 +1103,14 @@ void executeReqFilePartCommand(uint8_t CmdData[]){
   // if the user requested a start position after the end 
   // position, then reject the command
   if(end_pos < start_pos){
-    CmdRejCtr++;
+    recordCommandFailure();
     return;
   }
   
   // if the user requested more bytes than a packet can hold
   // then reject the command
   if(end_pos - start_pos > PKT_MAX_LEN - 12){
-    CmdRejCtr++;
+    recordCommandFailure();
     return;
   }
   
@@ -1216,16 +1123,10 @@ void executeReqFilePartCommand(uint8_t CmdData[]){
     // send the telemetry message by adding the buffer to the header
     success_flg = ccsds_xbee.sendTlmMsg(FilePartDestAddr, FILEPART_APID, FilePart_Pkt_Buff, payloadLength);
     
-    if(success_flg > 0){
-      // increment the cmd executed counter
-      CmdExeCtr++;
-    }
-    else{
-      CmdRejCtr++;
-    }
+    recordStatusOfCommand(success_flg);
   }
   else{
-    CmdRejCtr++;
+    recordCommandFailure();
   }
 }
 
@@ -1241,7 +1142,7 @@ void executeRebootCommand(uint8_t CmdData[]){
   wdt_enable(WDTO_1S);
 
   // increment the cmd executed counter
-  CmdExeCtr++;
+  recordCommandSuccess();
 }
       
 void writePwrLogEntry(struct PWRData_s PWRData, File PWRLogFile){
@@ -1527,7 +1428,6 @@ void initalizeRTCandReturnStatus(struct InitStat_s *InitStat){
 }
 
 void initalizeSDandReturnStatus(struct InitStat_s *InitStat){
-  //// Init SD card
   /* The SD card is used to store all of the log files.
    */
   SPI.begin();
@@ -1542,7 +1442,6 @@ void initalizeSDandReturnStatus(struct InitStat_s *InitStat){
 }
 
 void openLogFiles(){
-  //// Open log files
   // NOTE: Filenames must be shorter than 8 characters
    
   xbeeLogFile = SD.open("XBEE_LOG.txt", FILE_WRITE);
@@ -1554,7 +1453,7 @@ void openLogFiles(){
   initLogFile.flush(); 
   delay(10);
   IMULogFile = SD.open("IMU_LOG.txt", FILE_WRITE);
-IMULogFile.println(F("DateTime,SystemCal[0-3],AccelCal[0-3],GyroCal[0-3],MagCal[0-3],AccelX[m/s^2],AccelY[m/s^2],AccelZ[m/s^2],GyroX[rad/s],GyroY[rad/s],GyroZ[rad/s],MagX[uT],MagY[uT],MagZ[uT]"));
+  IMULogFile.println(F("DateTime,SystemCal[0-3],AccelCal[0-3],GyroCal[0-3],MagCal[0-3],AccelX[m/s^2],AccelY[m/s^2],AccelZ[m/s^2],GyroX[rad/s],GyroY[rad/s],GyroZ[rad/s],MagX[uT],MagY[uT],MagZ[uT]"));
   IMULogFile.flush();  
   delay(10);
   PWRLogFile = SD.open("PWR_LOG.txt", FILE_WRITE);
@@ -1648,6 +1547,99 @@ void initalizeADSandReturnStatus(struct InitStat_s *InitStat){
   debug_serial.println("Initialized ADS1015");
 }
 
+void initalizeSoftRTCandReturnStatus(struct InitStat_s *InitStat){
+  //// SoftRTC (for subsecond precision)
+  SoftRTC.begin(rtc.now());  // Initialize SoftRTC to the current time
+  start_millis = millis();  // get the current millisecond count
+}
+
 bool isPacketCorrectLength(int BytesRead, uint8_t ReadData[]){
   return BytesRead != getPacketLength(ReadData);
+}
+
+void processIMU(struct IMUData_s *IMUData){
+  // increment read counters
+
+  if(isTimeToReadImu()){
+    readImuSensorsIntoStruct(IMUData);
+    writeImuLogEntry(*IMUData, IMULogFile);
+  }
+  
+}
+
+void processPWR(struct PWRData_s *PWRData){
+    
+  if(isTimeToReadPwr()){
+    readPwrSensorsIntoStruct(PWRData);
+    writePwrLogEntry(*PWRData, PWRLogFile);
+  }
+  
+}
+
+void processENV(struct ENVData_s *ENVData){
+  
+  if(isTimeToReadEnv()){
+    readEnvSensorsIntoStruct(ENVData);
+    writeEnvLogEntry(*ENVData, ENVLogFile);
+  }
+  
+}
+
+bool isTimeToReadImu(){
+  
+  /*
+   * There are several ways to decide when to read the IMU...
+   * Either time-based sampling or cycle based cycling could 
+   * be used. This function currently implements time-based
+   * sampling but could be changed to trigger at a periodic 
+   * number of cycles.
+   */
+  return imuReadPeriod < millis()-imuLastReadTime;
+}
+
+bool isTimeToReadPwr(){
+  return pwrReadPeriod < millis()-pwrLastReadTime;
+}
+
+bool isTimeToReadEnv(){
+  return envReadPeriod < millis()-envLastReadTime;
+}
+
+void initalizeCounters(){
+  
+  //// set interface counters to zero
+  CommandExecutionCounter = 0;
+  CommandRejectionCounter = 0;
+  ccsds_xbee.resetCounters();
+}
+
+void recordCommandSuccess(){
+ /*
+  * For most payloads the response to a command executing successfully 
+  * would probably just to increment a counter indicating it succeeded, 
+  * but for certain applications there could be other responses (such as
+  * sending a message back so that the ground can confirm the command 
+  * execution).
+  */
+  CommandExecutionCounter++;
+}
+
+void recordCommandFailure(){
+ /*
+  * For most payloads the response to a command failing may be more 
+  * involved than just setting the reject counter (such as sending back
+  * a message indicating a rejection so that the ground can react)
+  */
+  CommandExecutionCounter++;
+}
+
+void recordStatusOfCommand(bool success_flg){
+  
+  if(success_flg > 0){
+    // increment the cmd executed counter
+    recordCommandSuccess();
+  }
+  else{
+    recordCommandFailure();
+  }
 }
