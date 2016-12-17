@@ -1141,7 +1141,7 @@ CCSDS_TlmSecHdr_t getTlmHeader(uint8_t _packet[]) {
 }
 
 CCSDS_CmdSecHdr_t getCmdHeader(uint8_t _packet[]) {
-	return *(CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t));
+	return *(CCSDS_CmdSecHdr_t*)(_packet+sizeof(CCSDS_PriHdr_t)-1);
 }
 
 CCSDS_TlmPkt_t getTlmPkt(uint8_t _packet[]) {
