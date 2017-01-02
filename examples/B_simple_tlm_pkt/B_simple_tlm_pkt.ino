@@ -84,11 +84,8 @@ void setup(){
 }
 void loop(){
 
-  // create a buffer in which to compile the packet
-  uint8_t Pkt_Buff[PKT_MAX_LEN];
-
   // create a buffer in which to compile the payload of the packet
-  uint8_t payload_buff[100];
+  uint8_t payload_buff[PKT_MAX_LEN];
 	
   // initalize a counter to keep track of the length of the payload
   uint8_t payload_size = 0;
