@@ -8,19 +8,25 @@
  */
  
 /* 
- *  This sketch builds upon D_rtc_logging to demonstrate how to send and 
- *  receive packets and using an RTC for logging. This sketch demonstrates
- *  the nominal usage of the library, so the configuration #defines present
- *  in the previous sketches are removed here.
+ *  This sketch builds upon D_log_packets to demonstrate how to send and 
+ *  receive packets and using an RTC for logging. 
+ *
+ *  This sketch demonstrates the nominal usage of the library (with SD and
+ *  RTC), so the configuration #defines present in the previous sketches
+ *  which remove those functionalities are removed here.
  */
 
 // Define the SD card chip select pin
 #define CHIP_SELECT_PIN 53
 
 // include the library
-#include <SPI.h>
-#include <SD.h>
-#include "ccsds_xbee.h" // this always needs to be included after SD and RTC
+/* 
+ *  comment same as D_log_packets
+ *
+ * In addition ccsds_xbee also includes the RTC library, so that doesn't 
+ * need to be done here.
+ */
+#include "ccsds_xbee.h"
 
 // declare a CCSDS_Xbee object
 CCSDS_Xbee ccsds_xbee;
@@ -38,14 +44,14 @@ void setup(){
 
   // Init Serials
   /*
-   * Same as simple_tlm_msg
+   * comment same as B_simple_tlm_pkt
    */
   Serial.begin(250000);
   Serial3.begin(9600);
   
   //// Init Xbee
   /* 
-   *  same as simple_tlm_msg
+   *  comment same as B_simple_tlm_pkt
    */
   uint8_t initstat = ccsds_xbee.init(0x0002, 0x0B0B, Serial3, Serial);
   if(!initstat) {
@@ -72,7 +78,7 @@ void setup(){
   delay(10);
 
   /*
-   * See example C_log_packets for addition info
+   * See example D_log_packets for addition info
    */
   ccsds_xbee.start_logging(xbeeLogFile);
 
@@ -104,13 +110,13 @@ void setup(){
 }
 void loop(){
 
-  // Initalize buffers/counters (same as simple_tlm_msg)
+  // Initalize buffers/counters (same as B_simple_tlm_pkt)
   uint8_t Pkt_Buff[PKT_MAX_LEN];
   uint8_t payload_buff[100];
   uint8_t payload_size = 0;
   uint8_t pktLength = 0;
 
-  // Create telemetry packet (same as simple_tlm_msg)
+  // Create telemetry packet (same as B_simple_tlm_pkt)
   payload_size = addIntToTlm(cycle_ctr, payload_buff, payload_size);
   uint32_t current_time_ms = millis();
   payload_size = addIntToTlm(current_time_ms, payload_buff, payload_size);
@@ -120,14 +126,14 @@ void loop(){
   payload_size = addStrToTlm(sketch_name, payload_buff, payload_size);
   
  /*
-  * Same as C_log_packetes
+  * Same as D_log_packetes
   */ 
   if(ccsds_xbee.sendTlmMsg(0x0003, 0x00FF, payload_buff, payload_size)){
     Serial.print("Sent tlm packet,");
   }
 
  /* 
-  *  Same as C_log_packetes
+  *  Same as D_log_packetes
   */
   uint8_t bytes_read = 0;
   bytes_read = ccsds_xbee.readMsg(Pkt_Buff);
@@ -147,9 +153,10 @@ void loop(){
     Serial.println(" Message received!");
 
     /*
-     *  In this sketch we don't process the received message, but 
+     *  In this sketch we don't process the received message (because
+     *  that's not important to demonstrating how RTC logging works), but 
      *  it would be done the same was as demonstrated in 
-     *  simple_rcv_cmd
+     *  C_simple_rcv_cmd
      */    
   }
 

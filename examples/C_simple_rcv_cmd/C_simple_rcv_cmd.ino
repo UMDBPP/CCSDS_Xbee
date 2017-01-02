@@ -10,7 +10,7 @@
  * 
  * Xbee attached to adafruit xbee breakout shield connected to XCTU
  * To send LED On Cmd from XCTU:
- *    In console view, load B_cmds_list_xctu
+ *    In console view, load C_cmds_list_xctu
  *    Send LED_ON frame
  * To send LED Off Cmd from XCTU:
  *    If not already loaded, load B_cmds_list_xctu as above
@@ -21,10 +21,8 @@
  */
  
 // configure ccsds_xbee library
-/*
- * This statement configures the CCSDS_Xbee library such that it does not 
- * attempt to load the RTC library, which the user may not have installed
- * (since its not a default library).
+/* 
+ *  comment same as B_simple_tlm_pkt
  */
 #define _NO_RTC_
 
@@ -40,31 +38,15 @@ uint16_t cycle_ctr = 0;
 void setup(){
 
   // Init Serials
-  /*
-   * Note that the xbee's have only been tested at 9600baud at this time and
-   * so the serial that the xbee is using must be set to this baud rate.
+  /* 
+   *  comment same as B_simple_tlm_pkt
    */
   Serial.begin(250000);
   Serial3.begin(9600);
   
   //// Init Xbee
-  /* InitXbee() will configure the attached xbee so that it can talk to
-   *   xbees which also use this library. It also handles the initalization
-   *   of the adafruit xbee library. 
-   *   
-   *   The arguments passed to init() are:
-   *   init(uint16_t MY_Addr, uint16_t PanID, Stream &xbee_serial, Stream &debug_serial)
-   *   
-   *   MY_Addr is the address of this xbee. All xbee addresses must be 
-   *   unqiue. The PanID defines the network for the xbee. All xbees must
-   *   be on the same network in order to talk to eachother. The xbee_serial
-   *   is the arduino Serial object that the Tx/Rx of the Xbee are connected 
-   *   to. Then talking to the xbee the library will write to and read from
-   *   that serial. 
-   *   
-   *   The fourth argument to init is optional. When used, debugging info will 
-   *   be printed to the serial object supplied in the 4th argument. For a 
-   *   normal system this would not be used.
+  /* 
+   *  comment same as B_simple_tlm_pkt
    */
   uint8_t initstat = ccsds_xbee.init(0x0002, 0x0B0B, Serial3, Serial);
   if(!initstat) {
@@ -87,14 +69,16 @@ void loop(){
 	uint8_t pktLength = 0;
 
   /*
-   * Calling readMsg will check if the xbee has received a message. If
-   * it has, it will place the entire message in the buffer supplied in
-   * the first argument and return the number of bytes read. If not, it 
-   * will return 0. If an error occurs a negative value will be returned.
+   * Calling readMsg will check if the xbee has received a message since 
+   * the last check. If the xbee has received a message, readMsg() will 
+   * retrieve it from the xbee and place the entire message in the buffer 
+   * supplied in the first argument and return the number of bytes read. 
+   * If no messages have been received by the xbee, readMsg will return 0. 
+   * If an error occurs a negative value will be returned.
    * 
    * You may also call readMsg with a timeout by supplying an optional
-   * second parameter containing the number of millis seconds to wait 
-   * for a message. THIS IS A BLOCKING CALL.
+   * second argument containing the number of millis seconds to wait 
+   * for a message. SUPPLYING A SECOND ARGUMENT MADES READMSG A BLOCKING CALL.
    */ 
   uint8_t bytes_read = 0;
   bytes_read = ccsds_xbee.readMsg(Pkt_Buff);
@@ -111,7 +95,7 @@ void loop(){
      * We use the getPacketLength function to extract the length field
      * of the packet header. If it doesn't match the number of bytes 
      * we actually received, we don't process it because we can't be 
-     * sure if the packet was corrupted/truncated in transit of compiled 
+     * sure if the packet was corrupted/truncated in transit or compiled 
      * wrong originally.
      */
      Serial.println("Received partial packet!");
@@ -152,9 +136,13 @@ void packet_processing(uint8_t Pkt_Buff[]){
   /*
    * We then check to ensure that the packet we received is designated as a command.
    * Each APID should correspond to a type of packet... in this case we've defined 
-   * APID 100 to be a command, so we'll double check that it actually is to make sure
-   * the next check won't do something unexpected. If the packet isn't a command like
+   * APID 100 to be a command, but in theory there could be an APID 100 which is a command
+   * and an APID 100 which is a telemetry packet (though its recommended that you don't 
+   * reused APIDs at all, for clarity). If the packet isn't a command like
    * we expect it to be then we stop processing this packet.
+   *
+   * Note that if we wanted to check if a packet was a telemetry packet we could do so by
+   * comparing the return value of getPacketType to CCSDS_TLM_PKT.
    */
   if(getPacketType(Pkt_Buff) != CCSDS_CMD_PKT){
     Serial.println("Packet recieved is not a command");

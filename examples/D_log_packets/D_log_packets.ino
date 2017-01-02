@@ -7,16 +7,14 @@
  */
  
 /* 
- *  This sketch builds upon simple_tlm_pkt and simple_rcv_cmd to demonstrate 
+ *  This sketch builds upon B_simple_tlm_pkt and C_simple_rcv_cmd to demonstrate 
  *  how to send and received packets and have them be logged to a file.
  */
 
  
 // configure ccsds_xbee library
-/*
- * This statement configures the CCSDS_Xbee library such that it does not 
- * attempt to load the RTC library, which the user may not have installed
- * (since its not a default library).
+/* 
+ *  comment same as B_simple_tlm_pkt
  */
 #define _NO_RTC_
 
@@ -24,9 +22,12 @@
 #define CHIP_SELECT_PIN 53
 
 // include the library
-#include <SPI.h>
-#include <SD.h>
-#include "ccsds_xbee.h" // this always needs to be included after SD and RTC
+/* 
+ * Note that the ccsds_xbee library will include the SD and SPI libraries we
+ * need to do the logging for us... they do not need to be included here (but
+ * may be for clarity, if desired).
+ */
+#include "ccsds_xbee.h"
 
 // declare a CCSDS_Xbee object
 CCSDS_Xbee ccsds_xbee;
@@ -40,15 +41,15 @@ uint16_t cycle_ctr = 0;
 void setup(){
 
   // Init Serials
-  /*
-   * Same as simple_tlm_msg
+  /* 
+   *  comment same as B_simple_tlm_pkt
    */
   Serial.begin(250000);
   Serial3.begin(9600);
   
   //// Init Xbee
   /* 
-   *  same as simple_tlm_msg
+   *  comment same as B_simple_tlm_pkt
    */
   uint8_t initstat = ccsds_xbee.init(0x0002, 0x0B0B, Serial3, Serial);
   if(!initstat) {
@@ -79,35 +80,37 @@ void setup(){
   delay(10);
 
   /*
-   * To start logging call start_logging with the oepn file
-   * that you wish the log to be stored in. THE FILE MUST BE
-   * OPEN BEFORE CALLING start_logging(). The logging will cease 
-   * if the file is closed during the sketch. The library 
-   * will flush its contents to the log after each write, 
-   * the user does not need to close the file each loop.
+   * To start logging the I/O over the xbee call start_logging 
+   * with the already opended file that you wish the log to be 
+   * stored in. THE FILE MUST BE OPEN BEFORE CALLING start_logging().
+   * The library will flush its contents to the log after each 
+   * write. The user does not need to anything to the log file 
+   * while the program is executing. The logging will cease if 
+   * the log file is closed during the sketch. DO NOT CLOSE THE
+   * FILE.
    */
   ccsds_xbee.start_logging(xbeeLogFile);
   /*
-   * If the user wanted to stop logging they would call 
+   * If the user wanted to stop logging (not recommended) they 
+   * would call:
    * 
    * ccsds_xbee.end_logging();
    * xbeeLogFile.close();
    * 
-   * the user should not close the log file until after 
-   * they've called end_logging(). This is the recommended
-   * way of turning off logging.
+   * The user should not close the log file until after 
+   * they've called end_logging().
    */
   
 }
 void loop(){
 
-  // Initalize buffers/counters (same as simple_tlm_msg)
+  // Initalize buffers/counters (same as B_simple_tlm_pkt)
   uint8_t Pkt_Buff[PKT_MAX_LEN];
   uint8_t payload_buff[100];
   uint8_t payload_size = 0;
   uint8_t pktLength = 0;
 
-  // Create telemetry packet (same as simple_tlm_msg)
+  // Create telemetry packet (same as B_simple_tlm_pkt)
   payload_size = addIntToTlm(cycle_ctr, payload_buff, payload_size);
   uint32_t current_time_ms = millis();
   payload_size = addIntToTlm(current_time_ms, payload_buff, payload_size);
@@ -121,18 +124,19 @@ void loop(){
   * record the outgoing (and incoming) messages to the log file with a
   * timestamp.
   * 
-  * Note, this is a different way determining if the packet sent from what
-  * was used in simple_tlm_msg. Instead of comparing the sent packet counter
-  * before/after sending the message, we can also examine the return value 
-  * of sendTlmMsg.
-  * 
+  * Note, the code below is a different way determining if the packet 
+  * was successfully sent from what was used in B_simple_tlm_msg. 
+  * Instead of comparing the sent packet counter before/after sending 
+  * the message, we can also examine the return value of sendTlmMsg. 
+  *
+  * Either way is acceptable. 
   */ 
   if(ccsds_xbee.sendTlmMsg(0x0003, 0x00FF, payload_buff, payload_size)){
     Serial.print("Sent tlm packet,");
   }
 
  /* 
-  *  The following code is from simple_rcv_cmd. Because logging is enabled
+  *  The following code is from C_simple_rcv_cmd. Because logging is enabled
   *  any messages received will also be logged to the same file.
   *  
   */
@@ -148,11 +152,7 @@ void loop(){
   }
   else if(bytes_read != getPacketLength(Pkt_Buff)){
     /*
-     * We use the getPacketLength function to extract the length field
-     * of the packet header. If it doesn't match the number of bytes 
-     * we actually received, we don't process it because we can't be 
-     * sure if the packet was corrupted/truncated in transit of compiled 
-     * wrong originally.
+     * comment same as C_simple_rcv_cmd
      */
     Serial.println("Received partial packet!");
   }
@@ -160,9 +160,10 @@ void loop(){
     Serial.println(" Message received!");
 
     /*
-     *  In this sketch we don't process the received message, but 
+     *  In this sketch we don't process the received message (because
+     *  that's not important to demonstrating how logging works), but 
      *  it would be done the same was as demonstrated in 
-     *  B_simple_rcv_cmd
+     *  C_simple_rcv_cmd
      */    
   }
 

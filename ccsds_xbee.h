@@ -21,6 +21,7 @@
 #endif
 
 #ifndef _NO_SD_
+#include <SPI.h>
 #include <SD.h>
 #endif
 

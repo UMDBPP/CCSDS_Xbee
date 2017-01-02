@@ -9,14 +9,29 @@
 // configure ccsds_xbee library
 /*
  * This statement configures the CCSDS_Xbee library such that it does not 
- * attempt to load the RTC library, which the user may not have installed
- * (since its not a default library).
+ * attempt to use the RTC. The default configuration of the library is 
+ * intended to be used with an RTC if one is available, so this option 
+ * should really only be used if the project does not have access to an RTC.
+ * 
+ * If _NO_RTC_ is defined, then in order to reduce code size, the CCSDS_Xbee 
+ * library will not inclide the RTC library (which the user may not have 
+ * installed since its not a default library). Also to save code space, 
+ * CCSDS_Xbee will not define any of the functions which have to do with the 
+ * RTC (ie, if you define _NO_RTC_ then you cannot call the method 
+ *    add_rtc(RTC_DS1307 rtc) 
+ * because it will not have been compiled into the library).
  */
 #define _NO_RTC_
 /*
  * This statement defines the maximum packet length the user intends to 
- * use. If the user does not define PKT_MAX_LEN CCSDS_Xbee will define
- * a default value which the user can use to initalize buffers.
+ * use. PKT_MAX_LEN is defined by the CCSDS_Xbee library as 100 already, so 
+ * this definition is used to override the default value. This value is intended 
+ * to be used to initialize buffers so that they will be large enough to hold
+ * full packets. The CCSDS library uses this value to ensure that the user does
+ * not attempt to send a packet which is too long.
+ *
+ * The value of 100 is derived from a limitation of xbees that their packets be 
+ * less than 100 bytes.
  */
 #define PKT_MAX_LEN 100
 
@@ -70,7 +85,6 @@ void setup(){
 void loop(){
 
   // create a buffer in which to compile the packet
-  // make it longer than necessary
   uint8_t Pkt_Buff[PKT_MAX_LEN];
 
   // create a buffer in which to compile the payload of the packet
@@ -89,11 +103,16 @@ void loop(){
   *    addIntToTlm
   *    addFloatToTlm
   *    addStrToTlm
-  *  Each of these functions take the value to be added as the first 
+  * Each of these functions take the value to be added as the first 
   * argument, the buffer to add it to in the second argument, and the
   * position to add the point in the buffer as the third argument and 
   * return the new position (with the telemetry point added). These 
   * functions can be chained together in any manner as shown below.
+  *
+  * Note that these functions do not protect against overflowing the 
+  * packet buffer... packets should have a static format so the programmer 
+  * should determine how much data can fit in a packet as they write the 
+  * code.
   */
 	
   // add the cycle counter to telemetry

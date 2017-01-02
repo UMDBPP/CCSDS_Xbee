@@ -6,19 +6,30 @@
  * SD card installed
  * RTC installed
  */
+/*
+ * Other configuration for this sketch:
+ * 
+ * Xbee attached to adafruit xbee breakout shield connected to XCTU
+ * To send LED On Cmd from XCTU:
+ *    In console view, load F_cmds_list_xctu
+ *    Send LED_ON frame
+ * To send LED Off Cmd from XCTU:
+ *    If not already loaded, load F_cmds_list_xctu as above
+ *    Send LED_OFF frame
+ * The other frames defined in that file can be used to test
+ * the various checks we're doing on the commands before they're
+ * processed.
+ */
+ 
  
 /* 
- *  This sketch builds upon D_rtc_logging, which demonstrates the nominal 
- *  usage of the library. In this sketch we show how to receive and process 
- *  commands which contain parameters.
+ *  This sketch builds upon D_rtc_logging.
  */
 
 // Define the SD card chip select pin
 #define CHIP_SELECT_PIN 53
 
 // include the library
-#include <SPI.h>
-#include <SD.h>
 #include "ccsds_xbee.h" // this always needs to be included after SD and RTC
 
 // declare a CCSDS_Xbee object
@@ -37,14 +48,14 @@ void setup(){
 
   // Init Serials
   /*
-   * Same as simple_tlm_msg
+   * comment same as B_simple_tlm_pkt
    */
   Serial.begin(250000);
   Serial3.begin(9600);
   
   //// Init Xbee
   /* 
-   *  same as simple_tlm_msg
+   * comment same as B_simple_tlm_pkt
    */
   uint8_t initstat = ccsds_xbee.init(0x0002, 0x0B0B, Serial3, Serial);
   if(!initstat) {
@@ -69,7 +80,7 @@ void setup(){
   delay(10);
 
   /*
-   * See example C_log_packets for addition info
+   * See example D_log_packets for addition info
    */
   ccsds_xbee.start_logging(xbeeLogFile);
 
@@ -82,7 +93,7 @@ void setup(){
   }
 
   /*
-   * See example D_rtc_logging for addition info
+   * See example E_rtc_logging for addition info
    */
   ccsds_xbee.add_rtc(rtc);
 
@@ -92,13 +103,13 @@ void setup(){
 }
 void loop(){
 
-  // Initalize buffers/counters (same as simple_tlm_msg)
+  // Initalize buffers/counters (same as B_simple_tlm_pkt)
   uint8_t Pkt_Buff[PKT_MAX_LEN];
   uint8_t payload_buff[100];
   uint8_t payload_size = 0;
   uint8_t pktLength = 0;
 
-  // Create telemetry packet (same as simple_tlm_msg)
+  // Create telemetry packet (same as B_simple_tlm_pkt)
   payload_size = addIntToTlm(cycle_ctr, payload_buff, payload_size);
   uint32_t current_time_ms = millis();
   payload_size = addIntToTlm(current_time_ms, payload_buff, payload_size);
@@ -108,14 +119,14 @@ void loop(){
   payload_size = addStrToTlm(sketch_name, payload_buff, payload_size);
   
  /*
-  * Same as C_log_packetes
+  * Same as D_log_packets
   */ 
   if(ccsds_xbee.sendTlmMsg(0x0003, 0x00FF, payload_buff, payload_size)){
     Serial.print("Sent tlm packet,");
   }
 
  /* 
-  *  Same as C_log_packetes
+  *  Same as D_log_packetes
   */
   uint8_t bytes_read = 0;
   bytes_read = ccsds_xbee.readMsg(Pkt_Buff);
@@ -149,7 +160,7 @@ void loop(){
 
 void packet_processing(uint8_t Pkt_Buff[]){
  /* 
-  *  Same as C_log_packets
+  *  Same as C_simple_rcv_cmd
   */
 
   // check the APID

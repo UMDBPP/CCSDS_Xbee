@@ -18,14 +18,11 @@
 //// Includes:
 #include <avr/wdt.h>  // watchdog timer
 #include <Wire.h>
-#include <SPI.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 #include "Adafruit_MCP9808.h"
-#include "RTClib.h"  // RTC and SoftRTC
 #include <Adafruit_BME280.h>
-#include <SD.h>
 #include <Adafruit_ADS1015.h>
 #include "ccsds_xbee.h"
 #include <SSC.h>
